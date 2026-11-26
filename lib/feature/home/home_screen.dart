@@ -1,6 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:vegetables_app/config/constant.dart';
 import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
 import 'package:vegetables_app/feature/detail/detail_screen.dart';
@@ -11,6 +13,10 @@ import 'package:vegetables_app/feature/home/cubit/category_cubit.dart';
 import 'package:vegetables_app/feature/home/cubit/vegetable_cubit.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +30,16 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   int _selectedCategoryIndex = 0;
   String _selectedCategoryName = 'Semua';
+
+  /// true setelah header hijau ter-scroll lewat — status bar jadi terang.
+  bool _pastHeader = false;
+
+  static const _gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 2,
+    crossAxisSpacing: 14,
+    mainAxisSpacing: 16,
+    childAspectRatio: 0.64,
+  );
 
   @override
   void dispose() {
@@ -41,19 +57,38 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 11) return 'Selamat pagi';
+    if (hour < 15) return 'Selamat siang';
+    if (hour < 18) return 'Selamat sore';
+    return 'Selamat malam';
+  }
+
+  String get _firstName {
+    final name = FirebaseAuth.instance.currentUser?.displayName?.trim() ?? '';
+    if (name.isEmpty) return '';
+    return name.split(RegExp(r'\s+')).first;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // 1. TOP HEADER (LOKASI & NOTIFIKASI/KERANJANG)
-            _buildTopHeader(),
+    final topInset = MediaQuery.of(context).padding.top;
 
-            // 2. MAIN SCROLLABLE CONTENT
-            Expanded(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _pastHeader ? AppTheme.darkStatusBar : AppTheme.lightStatusBar,
+      child: Scaffold(
+        backgroundColor: bgApp,
+        body: Stack(
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n.depth == 0 && n.metrics.axis == Axis.vertical) {
+                  final past = n.metrics.pixels > 300;
+                  if (past != _pastHeader) setState(() => _pastHeader = past);
+                }
+                return false;
+              },
               child: RefreshIndicator(
                 color: primaryColor,
                 backgroundColor: Colors.white,
@@ -61,39 +96,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   context.read<CategoryCubit>().getCategories();
                   _fetchVegetables();
                 },
-                child: SingleChildScrollView(
+                child: CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(
                     parent: BouncingScrollPhysics(),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 32),
+                  slivers: [
+                    SliverToBoxAdapter(child: _buildHeroHeader()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                    SliverToBoxAdapter(child: _buildCategorySection()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 30)),
+                    SliverToBoxAdapter(child: _buildProductSectionHeader()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                    _buildProductGrid(),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: navBarClearance),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
-                      // 2A. SEARCH BAR CAPSULE
-                      _buildSearchBar(),
-
-                      const SizedBox(height: 18),
-
-                      // 2C. KATEGORI PILIHAN (PASTEL TILES)
-                      _buildCategorySection(),
-
-                      const SizedBox(height: 24),
-
-                      // 2D. SECTION PRODUK "PALING SEGAR HARI INI"
-                      _buildProductSectionHeader(),
-
-                      const SizedBox(height: 14),
-
-                      // 2E. GRID PRODUK SAYUR
-                      _buildProductGrid(),
-
-                      const SizedBox(height: 24),
-
-                      // 2F. BANNER PAKET MASAK HEMAT
-                      // _buildRecipePackBanner(),
-                      const SizedBox(height: 110),
-                    ],
+            // Latar status bar yang muncul setelah header terlewati
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _pastHeader ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    height: topInset,
+                    color: bgApp.withValues(alpha: 0.97),
                   ),
                 ),
               ),
@@ -104,380 +138,282 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 1. Top Header: Lokasi Pengiriman & Akses Cepat
-  Widget _buildTopHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-      child: Row(
+  // ---------------------------------------------------------------------------
+  // 1. HERO HEADER — hijau hutan dengan lokasi, sapaan, dan pencarian
+  // ---------------------------------------------------------------------------
+  Widget _buildHeroHeader() {
+    final name = _firstName;
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: AppGradients.forest,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          // Icon Pin Lokasi
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF2EC),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(
-              Icons.location_on_rounded,
-              color: primaryColor,
-              size: 20,
+          // Ornamen lingkaran & daun (dekoratif)
+          Positioned(
+            top: -70,
+            right: -50,
+            child: _decorCircle(220, 0.06),
+          ),
+          Positioned(
+            bottom: -60,
+            left: -40,
+            child: _decorCircle(160, 0.05),
+          ),
+          Positioned(
+            top: 70,
+            right: -18,
+            child: Transform.rotate(
+              angle: -0.5,
+              child: Icon(
+                Icons.eco_rounded,
+                size: 150,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
             ),
           ),
-          const SizedBox(width: 12),
 
-          // Teks Lokasi
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Dikirim ke alamat',
-                  style: xsRegular.copyWith(
-                    color: const Color(0xFF94A3B8),
-                    fontSize: 11,
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildLocationRow(),
+                  const SizedBox(height: 26),
+                  Text(
+                    name.isEmpty ? '$_greeting 👋' : '$_greeting, $name 👋',
+                    style: AppText.body.copyWith(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 13.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        'Jl. Pemuda No. 45, Semarang',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: sBold.copyWith(
-                          color: textNeutralPrimary,
-                          fontSize: 13,
+                  const SizedBox(height: 6),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Sayur segar,\nlangsung dari '),
+                        TextSpan(
+                          text: 'kebun.',
+                          style: AppText.display.copyWith(
+                            color: primaryColor200,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ],
+                    style: AppText.display.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 22),
+                  _buildSearchBar(),
+                ],
+              ),
             ),
-          ),
-
-          // Tombol Favorit
-          BlocBuilder<FavoriteCubit, FavoriteState>(
-            builder: (context, favState) {
-              return _buildCircleIconButton(
-                icon: Icons.favorite_border_rounded,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const FavoriteScreen(),
-                    ),
-                  );
-                },
-                badgeCount: favState.favorites.isNotEmpty
-                    ? favState.favorites.length
-                    : null,
-              );
-            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCircleIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    bool hasBadge = false,
-    int? badgeCount,
-  }) {
-    return Stack(
+  Widget _decorCircle(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: alpha),
+      ),
+    );
+  }
+
+  Widget _buildLocationRow() {
+    return Row(
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.white.withValues(alpha: 0.14),
             shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(21),
-              onTap: onTap,
-              child: Icon(icon, color: textNeutralPrimary, size: 20),
-            ),
+          child: const Icon(
+            Icons.location_on_rounded,
+            color: Colors.white,
+            size: 20,
           ),
         ),
-        if (hasBadge)
-          Positioned(
-            top: 9,
-            right: 10,
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEF4444),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        if (badgeCount != null)
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: primaryColor,
-                shape: BoxShape.circle,
-              ),
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-              alignment: Alignment.center,
-              child: Text(
-                '$badgeCount',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  height: 1.0,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// 2A. Search Bar Pill Minimalis
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F2),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.search_rounded,
-              color: Color(0xFF94A3B8),
-              size: 22,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                textInputAction: TextInputAction.search,
-                style: sMedium.copyWith(
-                  color: textNeutralPrimary,
-                  fontSize: 13,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Cari bayam, tomat, wortel...',
-                  hintStyle: sRegular.copyWith(
-                    color: const Color(0xFF94A3B8),
-                    fontSize: 13,
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  focusedErrorBorder: InputBorder.none,
-                  filled: false,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                onSubmitted: (val) => _fetchVegetables(search: val),
-                onChanged: (val) {
-                  if (val.isEmpty) {
-                    _fetchVegetables(search: '');
-                  }
-                  setState(() {});
-                },
-              ),
-            ),
-            // if (_searchController.text.isNotEmpty)
-            //   GestureDetector(
-            //     behavior: HitTestBehavior.opaque,
-            //     onTap: () {
-            //       _searchController.clear();
-            //       setState(() {});
-            //       _fetchVegetables(search: '');
-            //     },
-            //     child: const Padding(
-            //       padding: EdgeInsets.symmetric(horizontal: 6),
-            //       child: Icon(
-            //         Icons.close_rounded,
-            //         color: Color(0xFF94A3B8),
-            //         size: 18,
-            //       ),
-            //     ),
-            //   ),
-            // Container(
-            //   width: 30,
-            //   height: 30,
-            //   decoration: BoxDecoration(
-            //     color: Colors.white,
-            //     borderRadius: BorderRadius.circular(15),
-            //   ),
-            //   child: Material(
-            //     color: Colors.transparent,
-            //     child: InkWell(
-            //       borderRadius: BorderRadius.circular(15),
-            //       onTap: () => _fetchVegetables(),
-            //       child: const Icon(
-            //         Icons.tune_rounded,
-            //         color: textNeutralPrimary,
-            //         size: 16,
-            //       ),
-            //     ),
-            //   ),
-            // ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 2B. Hero Promo Banner
-  // ignore: unused_element
-  Widget _buildHeroBanner() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF037432), Color(0xFF04883B), Color(0xFF159E4E)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: primaryColor.withValues(alpha: 0.22),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            // Konten Teks & Tombol
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: Colors.white,
-                        size: 12,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'PANEN SUBUH HARI INI',
-                        style: sBold.copyWith(
-                          color: Colors.white,
-                          fontSize: 10,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Segar Alami,\nLangsung dari Petani',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    height: 1.25,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Diskon 20% tanpa batas minimum belanja',
-                  style: sRegular.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Belanja Sekarang',
-                        style: sSemiBold.copyWith(
-                          color: primaryColor,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        color: primaryColor,
-                        size: 14,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 2C. Section Kategori Pilihan (Minimalist Text Pills ala Referensi)
-  Widget _buildCategorySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Kategori Pilihan',
-                style: sBold.copyWith(color: textNeutralPrimary, fontSize: 17),
+                'DIKIRIM KE',
+                style: AppText.overline.copyWith(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 10,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Jl. Pemuda No. 45, Semarang',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.title.copyWith(color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ],
               ),
             ],
           ),
         ),
+        const SizedBox(width: 12),
+        BlocBuilder<FavoriteCubit, FavoriteState>(
+          builder: (context, favState) {
+            return AppCircleButton(
+              icon: Icons.favorite_border_rounded,
+              style: CircleButtonStyle.glass,
+              badgeCount: favState.favorites.length,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FavoriteScreen(),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchBar() {
+    final hasText = _searchController.text.isNotEmpty;
+
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.only(left: 18, right: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radiusPill),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: primaryColor, size: 23),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              cursorColor: primaryColor,
+              style: AppText.bodyStrong,
+              decoration: InputDecoration(
+                hintText: 'Cari bayam, tomat, wortel...',
+                hintStyle: AppText.body.copyWith(color: textDarkTertiary),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onSubmitted: (val) => _fetchVegetables(search: val),
+              onChanged: (val) {
+                if (val.isEmpty) _fetchVegetables(search: '');
+                setState(() {});
+              },
+            ),
+          ),
+          if (hasText)
+            Pressable(
+              onTap: () {
+                _searchController.clear();
+                FocusScope.of(context).unfocus();
+                setState(() {});
+                _fetchVegetables(search: '');
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: textDarkTertiary,
+                  size: 20,
+                ),
+              ),
+            ),
+          Pressable(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              _fetchVegetables();
+            },
+            pressedScale: 0.9,
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(
+                gradient: AppGradients.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white,
+                size: 21,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. KATEGORI
+  // ---------------------------------------------------------------------------
+  IconData _categoryIcon(String name) {
+    final n = name.toLowerCase();
+    if (n == 'semua') return Icons.grid_view_rounded;
+    if (n.contains('daun')) return Icons.eco_rounded;
+    if (n.contains('buah')) return Icons.local_florist_rounded;
+    if (n.contains('umbi')) return Icons.grass_rounded;
+    if (n.contains('polong')) return Icons.bubble_chart_rounded;
+    if (n.contains('bumbu') || n.contains('rempah')) return Icons.spa_rounded;
+    return Icons.local_grocery_store_rounded;
+  }
+
+  Widget _buildCategorySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(overline: 'Jelajahi', title: 'Kategori'),
         const SizedBox(height: 14),
         SizedBox(
-          height: 38,
+          height: 52,
           child: BlocBuilder<CategoryCubit, CategoryState>(
             builder: (context, state) {
               List<String> categories = vegetableCategories;
@@ -493,15 +429,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
               return ListView.separated(
                 scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: categories.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
                 itemBuilder: (context, index) {
                   final catName = categories[index];
-                  final isSelected = _selectedCategoryIndex == index;
-
-                  return GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  return _buildCategoryChip(
+                    catName,
+                    isSelected: _selectedCategoryIndex == index,
                     onTap: () {
                       setState(() {
                         _selectedCategoryIndex = index;
@@ -509,26 +446,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       });
                       _fetchVegetables(category: catName);
                     },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFFD8F2E1)
-                            : const Color(0x00D8F2E1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        catName,
-                        style: (isSelected ? sSemiBold : sMedium).copyWith(
-                          color: isSelected
-                              ? textNeutralPrimary
-                              : const Color(0xFF94A3B8),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
                   );
                 },
               );
@@ -539,146 +456,181 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 2D. Header Section Produk
-  Widget _buildProductSectionHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Paling Segar Hari Ini',
-                style: sBold.copyWith(color: textNeutralPrimary, fontSize: 17),
+  Widget _buildCategoryChip(
+    String name, {
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Pressable(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.fromLTRB(6, 6, 18, 6),
+        decoration: BoxDecoration(
+          color: isSelected ? forestDeep : Colors.white,
+          borderRadius: BorderRadius.circular(radiusPill),
+          boxShadow: isSelected
+              ? AppShadows.glow(forestDeep, strength: 0.22)
+              : AppShadows.soft,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 240),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : primaryColor50,
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
-        ],
+              child: Icon(
+                _categoryIcon(name),
+                size: 19,
+                color: isSelected ? Colors.white : primaryColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              name,
+              style: AppText.title.copyWith(
+                fontSize: 13,
+                color: isSelected ? Colors.white : textNeutralPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  /// 2E. Grid Produk Sayur 2 Kolom dengan BLoC
+  // ---------------------------------------------------------------------------
+  // 3. PRODUK
+  // ---------------------------------------------------------------------------
+  Widget _buildProductSectionHeader() {
+    return BlocBuilder<VegetableCubit, VegetableState>(
+      builder: (context, state) {
+        final count = state is VegetableLoaded ? state.vegetables.length : null;
+        return SectionHeader(
+          overline: 'Pilihan hari ini',
+          title: _selectedCategoryName == 'Semua'
+              ? 'Paling Segar'
+              : _selectedCategoryName,
+          trailing: count == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    '$count produk',
+                    style: AppText.captionStrong.copyWith(
+                      color: textDarkTertiary,
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
   Widget _buildProductGrid() {
     return BlocBuilder<VegetableCubit, VegetableState>(
       builder: (context, state) {
         if (state is VegetableLoading) {
           return _buildShimmerLoading();
         } else if (state is VegetableError) {
-          return _buildErrorState(state.message);
+          return SliverToBoxAdapter(
+            child: EmptyStateView(
+              icon: Icons.wifi_off_rounded,
+              title: 'Gagal memuat sayuran',
+              message: state.message,
+              tone: errorColor,
+              toneBackground: red50,
+              actionLabel: 'Coba Lagi',
+              actionIcon: Icons.refresh_rounded,
+              onAction: () => _fetchVegetables(),
+            ),
+          );
         } else if (state is VegetableLoaded) {
           final items = state.vegetables;
           if (items.isEmpty) {
-            return _buildEmptyState();
+            return const SliverToBoxAdapter(
+              child: EmptyStateView(
+                icon: Icons.search_off_rounded,
+                title: 'Sayuran tidak ditemukan',
+                message:
+                    'Coba kata kunci lain atau pilih kategori yang berbeda.',
+              ),
+            );
           }
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+          return SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverGrid.builder(
+              gridDelegate: _gridDelegate,
               itemCount: items.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 16,
-                childAspectRatio: 0.72,
-              ),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return _buildProductCard(item);
-              },
+              itemBuilder: (context, index) => _buildProductCard(items[index]),
             ),
           );
         }
 
-        return const SizedBox.shrink();
+        return const SliverToBoxAdapter(child: SizedBox.shrink());
       },
     );
   }
 
   Widget _buildShimmerLoading() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverGrid.builder(
+        gridDelegate: _gridDelegate,
         itemCount: 4,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.72,
-        ),
         itemBuilder: (context, index) {
           return Container(
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
+              borderRadius: BorderRadius.circular(radiusXl),
+              boxShadow: AppShadows.soft,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF1F5F2),
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(17),
+            child: Shimmer.fromColors(
+              baseColor: surfaceMuted,
+              highlightColor: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(radiusLg - 2),
                       ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 14),
+                  _skeletonLine(width: 110, height: 13),
+                  const SizedBox(height: 8),
+                  _skeletonLine(width: 80, height: 10),
+                  const SizedBox(height: 14),
+                  Row(
                     children: [
+                      _skeletonLine(width: 64, height: 16),
+                      const Spacer(),
                       Container(
-                        height: 14,
-                        width: double.infinity,
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE2E8F0),
-                          borderRadius: BorderRadius.circular(4),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(radiusSm),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        height: 10,
-                        width: 70,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            height: 16,
-                            width: 60,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE2E8F0),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                ],
+              ),
             ),
           );
         },
@@ -686,91 +638,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _skeletonLine({required double width, required double height}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-      child: Center(
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: pastelMint,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.search_off_rounded,
-                color: primaryColor,
-                size: 32,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Sayuran tidak ditemukan',
-              style: sBold.copyWith(color: textNeutralPrimary, fontSize: 15),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Coba cari dengan kata kunci lain atau pilih kategori berbeda.',
-              textAlign: TextAlign.center,
-              style: xsRegular.copyWith(color: const Color(0xFF94A3B8)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(String message) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-      child: Center(
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: pastelRed,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.wifi_off_rounded,
-                color: Color(0xFFDC2626),
-                size: 32,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Gagal Memuat Sayuran',
-              style: sBold.copyWith(color: textNeutralPrimary, fontSize: 15),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: xsRegular.copyWith(color: const Color(0xFF94A3B8)),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () => _fetchVegetables(),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Coba Lagi'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-              ),
-            ),
-          ],
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6),
         ),
       ),
     );
@@ -779,33 +655,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildProductCard(VegetableModel item) {
     final imageUrl = item.gambar;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return Pressable(
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => DetailScreen(vegetable: item),
-          ),
+          MaterialPageRoute(builder: (context) => DetailScreen(vegetable: item)),
         );
       },
       child: Container(
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(radiusXl),
+          boxShadow: AppShadows.soft,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Gambar Produk & Badge
+            // Gambar + favorit
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
@@ -820,110 +687,59 @@ class _HomeScreenState extends State<HomeScreen> {
                           fromHeroContext,
                           toHeroContext,
                         ) {
-                          final BorderRadiusTween borderRadiusTween =
-                              BorderRadiusTween(
-                                begin: const BorderRadius.vertical(
-                                  top: Radius.circular(17),
-                                ),
-                                end: const BorderRadius.vertical(
-                                  bottom: Radius.circular(28),
-                                ),
-                              );
-
-                          final curvedAnimation = CurvedAnimation(
+                          final radiusTween = BorderRadiusTween(
+                            begin: BorderRadius.circular(radiusLg - 2),
+                            end: const BorderRadius.vertical(
+                              bottom: Radius.circular(36),
+                            ),
+                          );
+                          final curved = CurvedAnimation(
                             parent: animation,
                             curve: Curves.easeInOutCubic,
                           );
-
                           return AnimatedBuilder(
-                            animation: curvedAnimation,
-                            builder: (context, child) {
-                              return ClipRRect(
-                                borderRadius:
-                                    borderRadiusTween.evaluate(
-                                      curvedAnimation,
-                                    ) ??
-                                    BorderRadius.zero,
-                                child: Image.network(
-                                  imageUrl,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Container(
-                                        color: const Color(0xFFF1F5F2),
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.eco_rounded,
-                                            color: primaryColor,
-                                            size: 36,
-                                          ),
-                                        ),
-                                      ),
-                                ),
-                              );
-                            },
+                            animation: curved,
+                            builder: (context, child) => ClipRRect(
+                              borderRadius:
+                                  radiusTween.evaluate(curved) ??
+                                  BorderRadius.zero,
+                              child: VegImage(url: imageUrl),
+                            ),
                           );
                         },
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(17),
-                      ),
-                      child: Container(
-                        color: const Color(0xFFF8FAF8),
-                        child: Image.network(
-                          imageUrl,
-                          width: double.infinity,
-                          height: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(
-                                color: const Color(0xFFF1F5F2),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.eco_rounded,
-                                    color: primaryColor,
-                                    size: 40,
-                                  ),
-                                ),
-                              ),
-                        ),
-                      ),
+                    child: VegImage(
+                      url: imageUrl,
+                      borderRadius: BorderRadius.circular(radiusLg - 2),
                     ),
                   ),
-
-                  // Icon Favorite
                   Positioned(
-                    top: 6,
-                    right: 6,
+                    top: 8,
+                    right: 8,
                     child: BlocBuilder<FavoriteCubit, FavoriteState>(
                       builder: (context, favState) {
                         final isFav = context.read<FavoriteCubit>().isFavorite(
                           item.id,
                         );
-
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            context.read<FavoriteCubit>().toggleFavorite(item);
-                          },
-                          child: Container(
-                            width: 28,
-                            height: 28,
+                        return Pressable(
+                          pressedScale: 0.85,
+                          onTap: () => context
+                              .read<FavoriteCubit>()
+                              .toggleFavorite(item),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 34,
+                            height: 34,
                             decoration: BoxDecoration(
-                              color: isFav
-                                  ? const Color(0xFFFEE2E2)
-                                  : Colors.white.withValues(alpha: 0.9),
+                              color: Colors.white.withValues(alpha: 0.94),
                               shape: BoxShape.circle,
+                              boxShadow: AppShadows.soft,
                             ),
                             child: Icon(
                               isFav
                                   ? Icons.favorite_rounded
                                   : Icons.favorite_border_rounded,
-                              size: 16,
-                              color: isFav
-                                  ? const Color(0xFFEF4444)
-                                  : const Color(0xFF94A3B8),
+                              size: 17,
+                              color: isFav ? errorColor : textDarkSecondary,
                             ),
                           ),
                         );
@@ -934,9 +750,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Deskripsi & Harga
+            // Nama, deskripsi, harga
             Padding(
-              padding: const EdgeInsets.all(10.0),
+              padding: const EdgeInsets.fromLTRB(6, 12, 2, 2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -944,78 +760,55 @@ class _HomeScreenState extends State<HomeScreen> {
                     item.nama,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: sBold.copyWith(
-                      color: textNeutralPrimary,
-                      fontSize: 13,
-                    ),
+                    style: AppText.title.copyWith(fontSize: 14.5),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     item.deskripsi,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: xsRegular.copyWith(
-                      color: const Color(0xFF94A3B8),
-                      fontSize: 11,
-                    ),
+                    style: AppText.caption,
                   ),
-                  const SizedBox(height: 8),
-
-                  // Baris Harga & Tombol Tambah (+)
+                  const SizedBox(height: 10),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        'Rp ${NumberFormat('#,###', 'id_ID').format(item.harga)}',
-                        style: sBold.copyWith(
-                          color: primaryColor,
-                          fontSize: 14,
+                      Expanded(
+                        child: Text(
+                          formatRupiah(item.harga),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.price.copyWith(
+                            fontSize: 15,
+                            color: textNeutralPrimary,
+                          ),
                         ),
                       ),
-
-                      // Tombol Tambah Hijau Kapsul
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: primaryColor,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              context.read<CartCubit>().addItem(
-                                item,
-                                quantity: 1,
-                              );
-                              ScaffoldMessenger.of(
-                                context,
-                              ).hideCurrentSnackBar();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '${item.nama} ditambahkan ke keranjang',
-                                    style: sMedium.copyWith(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  duration: const Duration(seconds: 1),
-                                  backgroundColor: primaryColor,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              );
-                            },
-                            child: const Icon(
-                              Icons.add_rounded,
-                              color: Colors.white,
-                              size: 18,
+                      Pressable(
+                        pressedScale: 0.88,
+                        onTap: () {
+                          context.read<CartCubit>().addItem(item, quantity: 1);
+                          showAppSnackBar(
+                            context,
+                            '${item.nama} masuk keranjang',
+                            icon: Icons.shopping_basket_rounded,
+                            aboveNavBar: true,
+                          );
+                        },
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: forestDeep,
+                            borderRadius: BorderRadius.circular(radiusSm),
+                            boxShadow: AppShadows.glow(
+                              forestDeep,
+                              strength: 0.25,
                             ),
+                          ),
+                          child: const Icon(
+                            Icons.add_rounded,
+                            color: Colors.white,
+                            size: 20,
                           ),
                         ),
                       ),
@@ -1023,67 +816,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 2F. Banner Paket Masak Hemat
-  // ignore: unused_element
-  Widget _buildRecipePackBanner() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAF2EC),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFD4ECD9), width: 1),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.soup_kitchen_rounded,
-                color: primaryColor,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Paket Masak Siap Saji',
-                    style: sBold.copyWith(
-                      color: textNeutralPrimary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Sayur Asem, Sop & Capcay tinggal cemplung.',
-                    style: xsRegular.copyWith(
-                      color: const Color(0xFF64748B),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: primaryColor,
-              size: 22,
             ),
           ],
         ),

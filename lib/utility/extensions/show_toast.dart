@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:vegetables_app/config/constant.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
-import 'package:vegetables_app/ui/shared_widget/custom_card_secondary.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 extension ToastExtension on BuildContext {
@@ -14,87 +14,97 @@ extension ToastExtension on BuildContext {
     Duration? duration,
     SnackBarPosition? position,
   }) {
-    ScaffoldMessenger.of(this).showSnackBar(
+    final messenger = ScaffoldMessenger.of(this);
+    final tone = isSuccess ? primaryColor : errorColor;
+    final toneBackground = isSuccess ? primaryColor50 : red50;
+
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         duration: duration ?? const Duration(seconds: 3),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        padding: EdgeInsets.zero,
+        clipBehavior: Clip.none,
         margin: EdgeInsets.only(
           bottom:
               MediaQuery.of(this).size.height *
               (position == SnackBarPosition.top ? 0.75 : 0.10),
-          left: 16,
-          right: 16,
+          left: 20,
+          right: 20,
           top: kToolbarHeight,
         ),
-        animation: CurvedAnimation(
-          parent: AnimationController(
-            vsync: Scaffold.of(this),
-            duration: const Duration(milliseconds: 300),
-          )..forward(),
-          curve: Curves.easeOut,
-        ),
-        content: CustomCardSecondary(
-          useShadow: false,
-          leftColor: isSuccess ? iconInfo : iconDanger,
-          child: Container(
-            decoration: BoxDecoration(
-              color: isSuccess ? bgSurfaceInfo : bgSurfaceDanger,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(10),
-                bottomLeft: Radius.circular(10),
-                bottomRight: Radius.circular(12),
-                topRight: Radius.circular(12),
+        content: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radiusLg),
+            boxShadow: AppShadows.floating,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: toneBackground,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isSuccess
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.info_outline_rounded,
+                  size: 20,
+                  color: tone,
+                ),
               ),
-            ),
-            width: double.infinity,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SvgPicture.asset(
-                    'assets/images/ic_info.svg',
-                    colorFilter: ColorFilter.mode(
-                      isSuccess ? iconInfo : iconDanger,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                  const SizedBox(width: space200),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: smMedium.copyWith(
-                            color: isSuccess ? iconInfo : iconDanger,
-                          ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: AppText.title.copyWith(color: textNeutralPrimary),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        message,
+                        maxLines: 5,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          color: textDarkSecondary,
                         ),
-                        Text(
-                          maxLines: 5,
-                          overflow: TextOverflow.ellipsis,
-                          message,
-                          style: xsRegular.copyWith(
-                            color: isSuccess ? iconInfo : iconDanger,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  SvgPicture.asset(
-                    'assets/images/ic_close_circle.svg',
-                    colorFilter: ColorFilter.mode(
-                      isSuccess ? iconInfo : iconDanger,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Pressable(
+                onTap: messenger.hideCurrentSnackBar,
+                pressedScale: 0.88,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    color: surfaceMuted,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: textDarkTertiary,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

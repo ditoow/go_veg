@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:vegetables_app/ui/app_back_button.dart';
+import 'package:flutter/services.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class NotificationScreen extends StatefulWidget {
@@ -82,7 +86,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       'group': 'Terdahulu',
       'category': 'Info Sistem',
       'icon': Icons.security_rounded,
-      'iconColor': Color(0xFF2563EB),
+      'iconColor': infoColor,
       'bgColor': pastelBlue,
       'isRead': true,
     },
@@ -96,6 +100,25 @@ class _NotificationScreenState extends State<NotificationScreen> {
         .toList();
   }
 
+  static bool _isUnread(Map<String, dynamic> item) =>
+      !((item['isRead'] as bool?) ?? true);
+
+  int get _unreadCount => _notifications.where(_isUnread).length;
+
+  /// Jumlah notifikasi belum dibaca untuk tiap filter (ditampilkan di pill).
+  int _unreadCountFor(int filterIndex) {
+    final filter = _filters[filterIndex];
+    return _notifications
+        .where(
+          (n) =>
+              _isUnread(n) && (filterIndex == 0 || n['category'] == filter),
+        )
+        .length;
+  }
+
+  /// true jika dibuka via Navigator.push (bukan sebagai tab MainNavigation).
+  bool get _isStandalone => ModalRoute.of(context)?.canPop ?? false;
+
   void _markAllAsRead() {
     setState(() {
       for (var item in _notifications) {
@@ -103,282 +126,419 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Semua notifikasi ditandai telah dibaca',
-          style: sMedium.copyWith(color: Colors.white),
-        ),
-        duration: const Duration(seconds: 1),
-        backgroundColor: primaryColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+    showAppSnackBar(
+      context,
+      'Semua notifikasi ditandai telah dibaca',
+      icon: Icons.done_all_rounded,
+      aboveNavBar: !_isStandalone,
     );
+  }
+
+  void _markAsRead(Map<String, dynamic> item) {
+    if (!_isUnread(item)) return;
+    setState(() {
+      item['isRead'] = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final list = _filteredNotifications;
+    final unread = _unreadCount;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. TOP HEADER (Back Button + Title + Tandai Dibaca)
-            _buildHeader(),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.darkStatusBar,
+      child: Scaffold(
+        backgroundColor: bgApp,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. HEADER (otomatis menampilkan tombol kembali jika di-push)
+              AppPageHeader(
+                overline: 'Kabar terbaru',
+                title: 'Notifikasi',
+                subtitle: unread > 0
+                    ? '$unread notifikasi belum dibaca'
+                    : 'Semua notifikasi sudah dibaca',
+                trailing: _MarkAllReadButton(
+                  enabled: unread > 0,
+                  onTap: _markAllAsRead,
+                ),
+              ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-            // 2. CATEGORY PILL FILTER
-            _buildFilterPills(),
+              // 2. FILTER KATEGORI
+              _buildFilterPills(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 8),
 
-            // 3. NOTIFICATION LIST / EMPTY STATE
-            Expanded(
-              child: list.isEmpty
-                  ? _buildEmptyState()
-                  : _buildNotificationList(list),
-            ),
-          ],
+              // 3. DAFTAR NOTIFIKASI / KOSONG
+              Expanded(
+                child: list.isEmpty
+                    ? _buildEmptyState()
+                    : _buildNotificationList(list),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 1. Top Header (Menyesuaikan otomatis jika dibuka via push atau sebagai Tab Bottom Bar)
-  Widget _buildHeader() {
-    final canPop = Navigator.canPop(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Jika dibuka via Navigator.push, tampilkan AppBackButton
-          if (canPop) ...[
-            const AppBackButton(),
-            Text(
-              'Notifikasi',
-              style: sBold.copyWith(color: textNeutralPrimary, fontSize: 18),
-            ),
-          ] else ...[
-            // Jika berada di Bottom Bar tab, judul tampil rapi di kiri
-            Text(
-              'Notifikasi',
-              style: sBold.copyWith(color: textNeutralPrimary, fontSize: 22),
-            ),
-          ],
-
-          // Tombol Lingkaran Tandai Dibaca (Circle Button simetris)
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-            ),
-            child: IconButton(
-              icon: const Icon(
-                Icons.done_all_rounded,
-                size: 20,
-                color: primaryColor,
-              ),
-              onPressed: _markAllAsRead,
-              tooltip: 'Tandai semua dibaca',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 2. Category Filter Pills (Konsisten dengan Kategori Home)
+  // ---------------------------------------------------------------------------
+  // FILTER PILLS — selaras dengan chip kategori di Beranda
+  // ---------------------------------------------------------------------------
   Widget _buildFilterPills() {
     return SizedBox(
-      height: 38,
+      height: 44,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: _filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          final title = _filters[index];
-          final isSelected = _selectedFilterIndex == index;
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              setState(() => _selectedFilterIndex = index);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFFD8F2E1)
-                    : const Color(0x00D8F2E1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                title,
-                style: (isSelected ? sSemiBold : sMedium).copyWith(
-                  color: isSelected
-                      ? textNeutralPrimary
-                      : const Color(0xFF94A3B8),
-                  fontSize: 13,
-                ),
-              ),
-            ),
+          return _FilterPill(
+            label: _filters[index],
+            count: _unreadCountFor(index),
+            isSelected: _selectedFilterIndex == index,
+            onTap: () => setState(() => _selectedFilterIndex = index),
           );
         },
       ),
     );
   }
 
-  /// 3. Notification List grouped with dividers
+  // ---------------------------------------------------------------------------
+  // DAFTAR — dikelompokkan per waktu (Hari Ini, Kemarin, Terdahulu)
+  // ---------------------------------------------------------------------------
   Widget _buildNotificationList(List<Map<String, dynamic>> items) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      groups.putIfAbsent(item['group'] as String, () => []).add(item);
+    }
+    final entries = groups.entries.toList();
+
     return ListView.separated(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 110.0),
-      itemCount: items.length,
-      separatorBuilder: (_, _) =>
-          const Divider(color: Color(0xFFF1F5F9), thickness: 1, height: 24),
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, navBarClearance),
+      itemCount: entries.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 26),
       itemBuilder: (context, index) {
-        final item = items[index];
-        final bool isRead = (item['isRead'] as bool?) ?? true;
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            if (!isRead) {
-              setState(() {
-                item['isRead'] = true;
-              });
-            }
-          },
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Icon berlatar pastel
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: item['bgColor'] as Color,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Center(
-                  child: Icon(
-                    item['icon'] as IconData,
-                    color: item['iconColor'] as Color,
-                    size: 22,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Konten Teks
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item['title'] as String,
-                            style: sBold.copyWith(
-                              color: textNeutralPrimary,
-                              fontSize: 13.5,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                        // Unread Dot
-                        if (!isRead)
-                          Container(
-                            margin: const EdgeInsets.only(top: 4, left: 8),
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item['message'] as String,
-                      style: sRegular.copyWith(
-                        color: const Color(0xFF64748B),
-                        fontSize: 12,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      item['time'] as String,
-                      style: xsRegular.copyWith(
-                        color: const Color(0xFF94A3B8),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
+        final entry = entries[index];
+        return _buildGroup(entry.key, entry.value);
       },
     );
   }
 
-  /// 4. Clean Empty State
+  Widget _buildGroup(String title, List<Map<String, dynamic>> items) {
+    final unread = items.where(_isUnread).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: AppText.overline.copyWith(color: textDarkTertiary),
+                ),
+              ),
+              if (unread > 0)
+                Text(
+                  '$unread baru',
+                  style: AppText.captionStrong.copyWith(
+                    color: primaryColor,
+                    fontSize: 11.5,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radiusXl),
+            boxShadow: AppShadows.soft,
+          ),
+          child: Column(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                if (i > 0)
+                  const Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: 78,
+                    color: hairline,
+                  ),
+                _NotificationTile(
+                  item: items[i],
+                  onTap: () => _markAsRead(items[i]),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // EMPTY STATE
+  // ---------------------------------------------------------------------------
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F2),
-              borderRadius: BorderRadius.circular(38),
-            ),
-            child: const Icon(
-              Icons.notifications_off_outlined,
-              color: Color(0xFF94A3B8),
-              size: 36,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Belum Ada Notifikasi',
-            style: sBold.copyWith(color: textNeutralPrimary, fontSize: 16),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40.0),
-            child: Text(
+    return const Center(
+      child: SingleChildScrollView(
+        physics: BouncingScrollPhysics(),
+        padding: EdgeInsets.only(bottom: navBarClearance),
+        child: EmptyStateView(
+          icon: Icons.notifications_off_rounded,
+          title: 'Belum Ada Notifikasi',
+          message:
               'Update pengiriman pesanan dan panen sayur segar harian akan muncul di sini.',
-              textAlign: TextAlign.center,
-              style: sRegular.copyWith(
-                color: const Color(0xFF94A3B8),
-                fontSize: 12,
-                height: 1.45,
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// PRIVATE WIDGETS
+// =============================================================================
+
+/// Tombol kapsul "Tandai dibaca" di header.
+class _MarkAllReadButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _MarkAllReadButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      pressedScale: 0.94,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : surfaceMuted,
+          borderRadius: BorderRadius.circular(radiusPill),
+          boxShadow: enabled ? AppShadows.soft : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.done_all_rounded,
+              size: 17,
+              color: enabled ? primaryColor : textDarkTertiary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Tandai dibaca',
+              style: AppText.captionStrong.copyWith(
+                fontSize: 12.5,
+                color: enabled ? textNeutralPrimary : textDarkTertiary,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pill filter: terpilih = hijau hutan, lainnya putih dengan bayangan lembut.
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FilterPill({
+    required this.label,
+    required this.count,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.center,
+        padding: EdgeInsets.only(left: 18, right: count > 0 ? 8 : 18),
+        decoration: BoxDecoration(
+          color: isSelected ? forestDeep : Colors.white,
+          borderRadius: BorderRadius.circular(radiusPill),
+          boxShadow: isSelected
+              ? AppShadows.glow(forestDeep, strength: 0.22)
+              : AppShadows.soft,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: AppText.title.copyWith(
+                fontSize: 13,
+                color: isSelected ? Colors.white : textNeutralPrimary,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                height: 26,
+                constraints: const BoxConstraints(minWidth: 26),
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.16)
+                      : primaryColor50,
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+                child: Text(
+                  '$count',
+                  style: AppText.captionStrong.copyWith(
+                    fontSize: 11,
+                    height: 1.1,
+                    color: isSelected ? Colors.white : primaryColor700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Satu baris notifikasi di dalam kartu grup.
+class _NotificationTile extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final VoidCallback onTap;
+
+  const _NotificationTile({required this.item, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isUnread = !((item['isRead'] as bool?) ?? true);
+    final accent = item['iconColor'] as Color;
+
+    return Pressable(
+      onTap: onTap,
+      pressedScale: 0.99,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        color: isUnread
+            ? primaryColor50.withValues(alpha: 0.55)
+            : Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 16, 18, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Ikon bulat berwarna sesuai jenis notifikasi
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: item['bgColor'] as Color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Icon(item['icon'] as IconData, color: accent, size: 21),
+            ),
+            const SizedBox(width: 14),
+
+            // Judul, isi, waktu
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item['title'] as String,
+                          style: AppText.title.copyWith(
+                            fontWeight: isUnread
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (isUnread)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(top: 6, left: 10),
+                          decoration: const BoxDecoration(
+                            color: primaryColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    item['message'] as String,
+                    style: AppText.body.copyWith(fontSize: 12.5, height: 1.5),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          item['category'] as String,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.captionStrong.copyWith(
+                            fontSize: 11,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 3,
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: const BoxDecoration(
+                          color: textDarkTertiary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Text(
+                        item['time'] as String,
+                        style: AppText.caption.copyWith(fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

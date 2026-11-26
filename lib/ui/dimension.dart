@@ -44,3 +44,17 @@ const double spacing7 = 24;
 const double spacing8 = 32;
 const double spacing9 = 40;
 const double spacing10 = 48;
+
+/// ============================================================================
+/// REDESIGN TOKENS — radius & layout yang dipakai seluruh layar
+/// ============================================================================
+const double radiusXs = 8;
+const double radiusSm = 12;
+const double radiusMd = 16;
+const double radiusLg = 20;
+const double radiusXl = 24;
+const double radius2xl = 32;
+const double radiusPill = 999;
+
+/// Ruang kosong di bawah konten agar tidak tertutup floating nav bar.
+const double navBarClearance = 128;

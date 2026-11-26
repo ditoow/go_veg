@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/style.dart';
 
-/// Reusable Back Button Component for consistent navigation throughout the app.
-class AppBackButton extends StatelessWidget {
+/// Tombol kembali yang seragam di seluruh aplikasi.
+class AppBackButton extends StatefulWidget {
   final VoidCallback? onTap;
+
+  /// true jika diletakkan di atas foto (detail produk)
   final bool isFrosted;
   final Color? iconColor;
   final Color? backgroundColor;
@@ -16,46 +19,45 @@ class AppBackButton extends StatelessWidget {
     this.isFrosted = false,
     this.iconColor,
     this.backgroundColor,
-    this.size = 42.0,
+    this.size = 44.0,
     this.iconSize = 18.0,
   });
 
   @override
+  State<AppBackButton> createState() => _AppBackButtonState();
+}
+
+class _AppBackButtonState extends State<AppBackButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final effectiveBgColor = backgroundColor ??
-        (isFrosted
-            ? Colors.white.withValues(alpha: 0.92)
+    final bg = widget.backgroundColor ??
+        (widget.isFrosted
+            ? Colors.white.withValues(alpha: 0.94)
             : Colors.white);
 
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: effectiveBgColor,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isFrosted ? 0.08 : 0.04),
-            blurRadius: isFrosted ? 12 : 8,
-            offset: const Offset(0, 3),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap ?? () => Navigator.maybePop(context),
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 120),
+        child: Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: bg,
+            shape: BoxShape.circle,
+            boxShadow: AppShadows.soft,
           ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(size / 2),
-          onTap: onTap ?? () => Navigator.maybePop(context),
-          child: Center(
-            child: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: iconColor ?? textNeutralPrimary,
-              size: iconSize,
-            ),
+          child: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: widget.iconColor ?? textNeutralPrimary,
+            size: widget.iconSize,
           ),
         ),
       ),

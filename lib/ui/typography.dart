@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:vegetables_app/ui/color.dart';
 
 const TextStyle xxsRegular = TextStyle(
   fontSize: 10,
@@ -458,3 +459,127 @@ const TextStyle xxxlBold = TextStyle(
   letterSpacing: 0.5,
   fontWeight: FontWeight.w700,
 );
+
+/// ============================================================================
+/// SEMANTIC TYPE SCALE (Redesign)
+/// Tracking lebih rapat untuk heading, line-height lega untuk body.
+/// Gunakan ini untuk semua UI baru — gaya lama di atas tetap ada agar
+/// kode lama tidak rusak.
+/// ============================================================================
+class AppText {
+  AppText._();
+
+  static const String _font = 'Poppins';
+
+  /// Judul besar hero (mis. "Sayur segar, langsung dari kebun")
+  static const TextStyle display = TextStyle(
+    fontFamily: _font,
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    height: 1.18,
+    letterSpacing: -0.8,
+    color: textNeutralPrimary,
+  );
+
+  /// Judul halaman
+  static const TextStyle h1 = TextStyle(
+    fontFamily: _font,
+    fontSize: 24,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+    letterSpacing: -0.6,
+    color: textNeutralPrimary,
+  );
+
+  /// Judul section
+  static const TextStyle h2 = TextStyle(
+    fontFamily: _font,
+    fontSize: 19,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+    letterSpacing: -0.4,
+    color: textNeutralPrimary,
+  );
+
+  /// Judul kartu / item
+  static const TextStyle h3 = TextStyle(
+    fontFamily: _font,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    letterSpacing: -0.2,
+    color: textNeutralPrimary,
+  );
+
+  static const TextStyle title = TextStyle(
+    fontFamily: _font,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.35,
+    letterSpacing: -0.1,
+    color: textNeutralPrimary,
+  );
+
+  static const TextStyle body = TextStyle(
+    fontFamily: _font,
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    height: 1.55,
+    letterSpacing: 0,
+    color: textDarkSecondary,
+  );
+
+  static const TextStyle bodyStrong = TextStyle(
+    fontFamily: _font,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    height: 1.5,
+    letterSpacing: 0,
+    color: textNeutralPrimary,
+  );
+
+  static const TextStyle caption = TextStyle(
+    fontFamily: _font,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    height: 1.45,
+    letterSpacing: 0,
+    color: textDarkTertiary,
+  );
+
+  static const TextStyle captionStrong = TextStyle(
+    fontFamily: _font,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    height: 1.4,
+    letterSpacing: 0,
+    color: textDarkSecondary,
+  );
+
+  /// Label kecil huruf kapital di atas judul (mis. "PILIHAN HARI INI")
+  static const TextStyle overline = TextStyle(
+    fontFamily: _font,
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    letterSpacing: 1.3,
+    color: primaryColor,
+  );
+
+  static const TextStyle button = TextStyle(
+    fontFamily: _font,
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    letterSpacing: 0.1,
+  );
+
+  static const TextStyle price = TextStyle(
+    fontFamily: _font,
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+    letterSpacing: -0.3,
+    color: primaryColor,
+  );
+}

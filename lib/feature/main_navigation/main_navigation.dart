@@ -9,6 +9,9 @@ import 'package:vegetables_app/feature/notification/notification_screen.dart';
 import 'package:vegetables_app/feature/orders/order_history_screen.dart';
 import 'package:vegetables_app/feature/profile/profile_screen.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
 
 class MainNavigation extends StatefulWidget {
   final int initialIndex;
@@ -44,8 +47,29 @@ class MainNavigation extends StatefulWidget {
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
+class _NavEntry {
+  final String label;
+  final String? svg;
+  final IconData? icon;
+  final IconData? activeIcon;
+
+  const _NavEntry({required this.label, this.svg, this.icon, this.activeIcon});
+}
+
 class _MainNavigationState extends State<MainNavigation> {
   late int _currentIndex;
+
+  static const _entries = [
+    _NavEntry(label: 'Beranda', svg: 'assets/svg/home.svg'),
+    _NavEntry(
+      label: 'Notifikasi',
+      icon: Icons.notifications_none_rounded,
+      activeIcon: Icons.notifications_rounded,
+    ),
+    _NavEntry(label: 'Keranjang', svg: 'assets/svg/basket.svg'),
+    _NavEntry(label: 'Pesanan', svg: 'assets/svg/document.svg'),
+    _NavEntry(label: 'Profil', svg: 'assets/svg/profile.svg'),
+  ];
 
   @override
   void initState() {
@@ -69,190 +93,128 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgApp,
       body: Stack(
         children: [
-          // 1. CONTENT PAGES DENGAN INDEXEDSTACK (State tidak reload saat ganti tab)
-          IndexedStack(index: _currentIndex, children: _pages),
+          // Konten tab (state tidak reload saat ganti tab)
+          IndexedStack(
+            index: _currentIndex,
+            children: [
+              // Hero hanya aktif di tab yang sedang tampil, supaya tag gambar
+              // di tab tersembunyi tidak ikut "terbang" saat buka detail.
+              for (int i = 0; i < _pages.length; i++)
+                HeroMode(enabled: i == _currentIndex, child: _pages[i]),
+            ],
+          ),
 
-          // 2. FLOATING WHITE PILL NAVIGATION BAR
+          // Floating nav bar hijau hutan
           Positioned(
             left: 20,
             right: 20,
-            bottom: 24,
-            child: _buildFloatingNavBar(),
+            bottom: 16 + bottomInset,
+            child: _buildNavBar(),
           ),
         ],
       ),
     );
   }
 
-  /// Floating White Capsule Navigation Bar
-  Widget _buildFloatingNavBar() {
+  Widget _buildNavBar() {
     return Container(
-      height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 70,
+      padding: const EdgeInsets.symmetric(horizontal: 9),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: primaryColor.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: forestDeep,
+        borderRadius: BorderRadius.circular(radiusPill),
+        boxShadow: AppShadows.floating,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Slot 1: Beranda (Home SVG)
-          _buildNavItem(index: 0, svgPath: 'assets/svg/home.svg'),
-
-          // Slot 2: Notifikasi (Bell Icon)
-          _buildNavItem(
-            index: 1,
-            iconData: Icons.notifications_none_rounded,
-            activeIconData: Icons.notifications_rounded,
-          ),
-
-          // Slot 3 (Center Action): Keranjang Belanja (Basket SVG)
-          _buildCenterActionItem(index: 2),
-
-          // Slot 4: Pesanan / Riwayat (Document SVG)
-          _buildNavItem(index: 3, svgPath: 'assets/svg/document.svg'),
-
-          // Slot 5: Akun / Profil (Profile SVG)
-          _buildNavItem(index: 4, svgPath: 'assets/svg/profile.svg'),
+          for (int i = 0; i < _entries.length; i++)
+            if (i == 2)
+              BlocBuilder<CartCubit, CartState>(
+                buildWhen: (a, b) => a.totalItems != b.totalItems,
+                builder: (context, state) =>
+                    _buildNavItem(i, badge: state.totalItems),
+              )
+            else
+              _buildNavItem(i),
         ],
       ),
     );
   }
 
-  /// Standard Nav Item (Gaya sebelumnya: Icon-only dengan animated dot indicator)
-  Widget _buildNavItem({
-    required int index,
-    String? svgPath,
-    IconData? iconData,
-    IconData? activeIconData,
-  }) {
+  Widget _buildNavItem(int index, {int badge = 0}) {
+    final entry = _entries[index];
     final isSelected = _currentIndex == index;
-    final color = isSelected ? primaryColor : const Color(0xFF94A3B8);
+    final color = isSelected ? forestDeep : Colors.white.withValues(alpha: 0.6);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final Widget icon = entry.svg != null
+        ? SvgPicture.asset(
+            entry.svg!,
+            width: 21,
+            height: 21,
+            colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+          )
+        : Icon(
+            isSelected ? (entry.activeIcon ?? entry.icon) : entry.icon,
+            size: 23,
+            color: color,
+          );
+
+    return Pressable(
       onTap: () => setState(() => _currentIndex = index),
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      pressedScale: 0.92,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        height: 52,
+        padding: EdgeInsets.symmetric(horizontal: isSelected ? 16 : 14),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(radiusPill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedScale(
-              scale: isSelected ? 1.12 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutBack,
-              child: svgPath != null
-                  ? SvgPicture.asset(
-                      svgPath,
-                      width: 22,
-                      height: 22,
-                      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                    )
-                  : Icon(
-                      isSelected ? (activeIconData ?? iconData) : iconData,
-                      size: 22,
-                      color: color,
-                    ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                icon,
+                if (badge > 0)
+                  Positioned(
+                    top: -9,
+                    right: -11,
+                    child: CountBadge(count: badge),
+                  ),
+              ],
             ),
-            const SizedBox(height: 4),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: isSelected ? 4 : 0,
-              height: isSelected ? 4 : 0,
-              decoration: const BoxDecoration(
-                color: primaryColor,
-                shape: BoxShape.circle,
-              ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              child: isSelected
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        entry.label,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: forestDeep,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// Center Hero Action Button (Lingkaran Hijau Botani dengan Basket SVG)
-  Widget _buildCenterActionItem({required int index}) {
-    final isSelected = _currentIndex == index;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _currentIndex = index),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutBack,
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: primaryColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withValues(alpha: isSelected ? 0.45 : 0.28),
-                  blurRadius: isSelected ? 14 : 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Center(
-              child: SvgPicture.asset(
-                'assets/svg/basket.svg',
-                width: 22,
-                height: 22,
-                colorFilter:
-                    const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-              ),
-            ),
-          ),
-          BlocBuilder<CartCubit, CartState>(
-            builder: (context, state) {
-              if (state.totalItems == 0) return const SizedBox.shrink();
-              return Positioned(
-                top: -2,
-                right: -2,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                  ),
-                  constraints:
-                      const BoxConstraints(minWidth: 18, minHeight: 18),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${state.totalItems}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
       ),
     );
   }

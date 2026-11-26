@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:vegetables_app/config/service_locator.dart';
 import 'package:vegetables_app/config/user_preference.dart';
@@ -7,6 +8,10 @@ import 'package:vegetables_app/firebase/firebase_analytics_helper.dart';
 import 'package:vegetables_app/firebase/firebase_email_auth.dart';
 import 'package:vegetables_app/firebase/firebase_google.auth.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -27,6 +32,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _isGoogleLoading = false;
 
+  /// Banner "sesi berakhir" ditampilkan sampai ditutup pengguna.
+  late bool _showSessionNotice;
+
   // Controllers
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _identifierController = TextEditingController();
@@ -35,41 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.sessionExpiredMessage != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.sessionExpiredMessage!,
-                    style: xsMedium.copyWith(
-                      color: Colors.white,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFFE11D48),
-            duration: const Duration(seconds: 4),
-            behavior: SnackBarBehavior.floating,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      });
-    }
+    _showSessionNotice = widget.sessionExpiredMessage != null;
   }
 
   @override
@@ -80,60 +54,84 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  void _switchTab(int index) {
+    if (activeTabIndex == index) return;
+    FocusScope.of(context).unfocus();
+    setState(() => activeTabIndex = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isLoginTab = activeTabIndex == 0;
+    final double bottomSafe = MediaQuery.paddingOf(context).bottom;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.lightStatusBar,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 24),
+              // 1. HEADER HIJAU HUTAN + PILL SWITCHER [ Masuk | Daftar ]
+              _buildHeroArea(isLoginTab),
 
-              // 1. NAMA APLIKASI (VegBox)
-              _buildAppLogo(),
+              Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + bottomSafe),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 2. INFO SESI BERAKHIR (opsional)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: _showSessionNotice
+                          ? _buildSessionNotice()
+                          : const SizedBox(width: double.infinity),
+                    ),
 
-              const SizedBox(height: 20),
+                    const SizedBox(height: 28),
 
-              // 2. JUDUL & SUBTITLE DINAMIS DENGAN ANIMASI HALUS
-              _buildHeaderTitle(isLoginTab),
+                    // 3. FORM (LOGIN / REGISTER DENGAN ANIMASI HALUS)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeInOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 280),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        layoutBuilder: _topAlignedLayout,
+                        transitionBuilder: _fadeSlideTransition,
+                        child: KeyedSubtree(
+                          key: ValueKey<bool>(isLoginTab),
+                          child: isLoginTab
+                              ? _buildLoginForm()
+                              : _buildRegisterForm(),
+                        ),
+                      ),
+                    ),
 
-              const SizedBox(height: 28),
+                    const SizedBox(height: 28),
 
-              // 3. PILL SWITCHER DENGAN INDIKATOR SLIDING HALUS [ Masuk | Daftar ]
-              _buildPillSwitcher(isLoginTab),
+                    // 4. PEMBATAS "ATAU"
+                    _buildOrDivider(),
 
-              const SizedBox(height: 26),
+                    const SizedBox(height: 20),
 
-              // 4. FORM FIELDS (LOGIN / REGISTER DENGAN ANIMASI HALUS)
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 320),
-                firstCurve: Curves.easeInOutCubic,
-                secondCurve: Curves.easeInOutCubic,
-                sizeCurve: Curves.easeInOutCubic,
-                crossFadeState: isLoginTab
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
-                firstChild: _buildLoginForm(),
-                secondChild: _buildRegisterForm(),
+                    // 5. TOMBOL SOCIAL LOGIN (GOOGLE & APPLE)
+                    _buildSocialButtons(),
+
+                    const SizedBox(height: 24),
+
+                    // 6. AJAKAN PINDAH TAB
+                    _buildSwitchPrompt(isLoginTab),
+                  ],
+                ),
               ),
-
-              const SizedBox(height: 26),
-
-              // 5. PEMBATAS "ATAU"
-              _buildOrDivider(),
-
-              const SizedBox(height: 22),
-
-              // 6. TOMBOL SOCIAL LOGIN (GOOGLE & APPLE DENGAN SVG)
-              _buildSocialButtons(),
-
-              const SizedBox(height: 36),
             ],
           ),
         ),
@@ -141,29 +139,93 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// 1. App Name Wordmark Logo
-  Widget _buildAppLogo() {
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+  // ---------------------------------------------------------------------------
+  // Animasi bersama
+  // ---------------------------------------------------------------------------
+  static Widget _topAlignedLayout(
+    Widget? currentChild,
+    List<Widget> previousChildren,
+  ) {
+    return Stack(
+      alignment: Alignment.topLeft,
+      children: [...previousChildren, ?currentChild],
+    );
+  }
+
+  static Widget _fadeSlideTransition(
+    Widget child,
+    Animation<double> animation,
+  ) {
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.04),
+          end: Offset.zero,
+        ).animate(animation),
+        child: child,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 1. HERO HEADER
+  // ---------------------------------------------------------------------------
+  Widget _buildHeroArea(bool isLoginTab) {
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 30),
+          child: _buildHeader(isLoginTab),
+        ),
+        // Pill switcher "melayang" di batas header & konten
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 0,
+          child: _buildPillSwitcher(isLoginTab),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader(bool isLoginTab) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: AppGradients.forest,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          const Text(
-            'VegBox',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: textNeutralPrimary,
-              letterSpacing: -0.5,
+          // Ornamen lingkaran & daun (dekoratif)
+          Positioned(top: -70, right: -50, child: _decorCircle(220, 0.06)),
+          Positioned(bottom: -60, left: -40, child: _decorCircle(160, 0.05)),
+          Positioned(
+            top: 64,
+            right: -22,
+            child: Transform.rotate(
+              angle: -0.5,
+              child: Icon(
+                Icons.eco_rounded,
+                size: 160,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
             ),
           ),
-          Container(
-            margin: const EdgeInsets.only(top: 8, left: 3),
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: primaryColor,
-              shape: BoxShape.circle,
+
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 62),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildBrandRow(),
+                  const SizedBox(height: 34),
+                  _buildHeadline(isLoginTab),
+                ],
+              ),
             ),
           ),
         ],
@@ -171,184 +233,279 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// 2. Header Title & Subtitle Dinamis dengan Smooth Slide + Fade
-  Widget _buildHeaderTitle(bool isLoginTab) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.12),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: KeyedSubtree(
-        // key: ValueKey<bool>(isLoginTab),
-        child: Center(
-          child: Column(
-            children: [
-              Text(
-                isLoginTab ? 'Masuk' : 'Daftar Akun',
-                style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: textNeutralPrimary,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  isLoginTab
-                      ? 'Masuk untuk mengelola dan memesan sayur segar harianmu.'
-                      : 'Buat akun untuk mulai menikmati kemudahan belanja sayuran segar.',
-                  textAlign: TextAlign.center,
-                  style: sRegular.copyWith(
-                    color: const Color(0xFF64748B),
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+  Widget _decorCircle(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: alpha),
       ),
     );
   }
 
-  /// 3. Pill Switcher [ Masuk | Daftar ] dengan Sliding Capsule Indicator
-  Widget _buildPillSwitcher(bool isLoginTab) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final halfWidth = (constraints.maxWidth - 8) / 2;
-
-        return Container(
-          height: 52,
-          padding: const EdgeInsets.all(4),
+  Widget _buildBrandRow() {
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFFEAF2EC),
-            borderRadius: BorderRadius.circular(30),
+            color: Colors.white.withValues(alpha: 0.14),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
           ),
-          child: Stack(
-            children: [
-              // Sliding Active Pill Capsule
-              AnimatedAlign(
-                alignment: isLoginTab
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
-                child: Container(
-                  width: halfWidth,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: primaryColor,
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withValues(alpha: 0.22),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Tab Labels (Masuk & Daftar)
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        if (!isLoginTab) setState(() => activeTabIndex = 0);
-                      },
-                      child: Center(
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: sSemiBold.copyWith(
-                            fontFamily: 'Poppins',
-                            color: isLoginTab
-                                ? Colors.white
-                                : const Color(0xFF475569),
-                            fontSize: 14,
-                          ),
-                          child: const Text('Masuk'),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        if (isLoginTab) setState(() => activeTabIndex = 1);
-                      },
-                      child: Center(
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: sSemiBold.copyWith(
-                            fontFamily: 'Poppins',
-                            color: !isLoginTab
-                                ? Colors.white
-                                : const Color(0xFF475569),
-                            fontSize: 14,
-                          ),
-                          child: const Text('Daftar'),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// Feedback Toast / Floating SnackBar
-  void _showFeedbackSnackBar({required String message, bool isError = true}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
+          child: const Icon(Icons.eco_rounded, color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isError
-                  ? Icons.error_outline_rounded
-                  : Icons.check_circle_outline_rounded,
-              color: Colors.white,
-              size: 18,
+            Text(
+              'VegBox',
+              style: AppText.h3.copyWith(
+                color: Colors.white,
+                fontSize: 18,
+                height: 1.15,
+              ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: xsMedium.copyWith(color: Colors.white, fontSize: 12.5),
+            const SizedBox(height: 2),
+            Text(
+              'SAYUR SEGAR HARIAN',
+              style: AppText.overline.copyWith(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 9.5,
+                letterSpacing: 1.4,
               ),
             ),
           ],
         ),
-        backgroundColor: isError ? const Color(0xFFE11D48) : primaryColor,
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ],
+    );
+  }
+
+  /// Judul & subtitle dinamis dengan fade + slide halus
+  Widget _buildHeadline(bool isLoginTab) {
+    final accent = AppText.display.copyWith(color: primaryColor200);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topLeft,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 280),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: _topAlignedLayout,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.08),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: Column(
+          key: ValueKey<bool>(isLoginTab),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isLoginTab ? 'MASUK KE AKUN' : 'DAFTAR AKUN BARU',
+              style: AppText.overline.copyWith(color: primaryColor200),
+            ),
+            const SizedBox(height: 10),
+            Text.rich(
+              TextSpan(
+                children: isLoginTab
+                    ? [
+                        const TextSpan(text: 'Selamat datang\n'),
+                        TextSpan(text: 'kembali.', style: accent),
+                      ]
+                    : [
+                        const TextSpan(text: 'Mulai belanja\n'),
+                        TextSpan(text: 'lebih segar.', style: accent),
+                      ],
+              ),
+              style: AppText.display.copyWith(color: Colors.white),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              isLoginTab
+                  ? 'Masuk untuk mengelola dan memesan sayur segar harianmu.'
+                  : 'Buat akun untuk mulai menikmati kemudahan belanja sayuran segar.',
+              style: AppText.body.copyWith(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 13.5,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  /// Pill Switcher [ Masuk | Daftar ] dengan kapsul aktif yang bergeser
+  Widget _buildPillSwitcher(bool isLoginTab) {
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radiusPill),
+        boxShadow: AppShadows.floating,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / 2;
+
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                top: 0,
+                bottom: 0,
+                left: isLoginTab ? 0 : segmentWidth,
+                width: segmentWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: forestDeep,
+                    borderRadius: BorderRadius.circular(radiusPill),
+                    boxShadow: AppShadows.glow(forestDeep, strength: 0.22),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _buildSwitcherTab(
+                    label: 'Masuk',
+                    icon: Icons.login_rounded,
+                    selected: isLoginTab,
+                    onTap: () => _switchTab(0),
+                  ),
+                  _buildSwitcherTab(
+                    label: 'Daftar',
+                    icon: Icons.person_add_alt_1_rounded,
+                    selected: !isLoginTab,
+                    onTap: () => _switchTab(1),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSwitcherTab({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final Color color = selected ? Colors.white : textDarkSecondary;
+
+    return Expanded(
+      child: Pressable(
+        onTap: onTap,
+        pressedScale: 0.96,
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: color),
+                duration: const Duration(milliseconds: 220),
+                builder: (context, value, _) =>
+                    Icon(icon, size: 18, color: value),
+              ),
+              const SizedBox(width: 8),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
+                style: AppText.title.copyWith(color: color),
+                child: Text(label),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. INFO SESI BERAKHIR
+  // ---------------------------------------------------------------------------
+  Widget _buildSessionNotice() {
+    return Container(
+      margin: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
+      decoration: BoxDecoration(
+        color: secondaryColor50,
+        borderRadius: BorderRadius.circular(radiusMd),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: secondaryColor100,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.schedule_rounded,
+              size: 18,
+              color: secondaryColor600,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sesi berakhir',
+                  style: AppText.title.copyWith(fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.sessionExpiredMessage ?? '',
+                  style: AppText.caption.copyWith(
+                    color: textDarkSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Pressable(
+            onTap: () => setState(() => _showSessionNotice = false),
+            pressedScale: 0.88,
+            child: const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: textDarkTertiary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // HANDLERS
+  // ---------------------------------------------------------------------------
 
   /// Flow Masuk dengan Email & Password
   Future<void> _handleEmailLogin() async {
@@ -357,17 +514,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      _showFeedbackSnackBar(
-        message: 'Email dan kata sandi wajib diisi.',
-        isError: true,
+      showAppSnackBar(
+        context,
+        'Email dan kata sandi wajib diisi.',
+        type: AppSnackType.error,
       );
       return;
     }
 
     if (!email.contains('@') || !email.contains('.')) {
-      _showFeedbackSnackBar(
-        message: 'Format email tidak valid (contoh: nama@email.com).',
-        isError: true,
+      showAppSnackBar(
+        context,
+        'Format email tidak valid (contoh: nama@email.com).',
+        type: AppSnackType.error,
       );
       return;
     }
@@ -403,7 +562,7 @@ class _LoginScreenState extends State<LoginScreen> {
       onError: (message) {
         if (!mounted) return;
         setState(() => _isLoading = false);
-        _showFeedbackSnackBar(message: message, isError: true);
+        showAppSnackBar(context, message, type: AppSnackType.error);
       },
     );
   }
@@ -416,25 +575,28 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (name.isEmpty) {
-      _showFeedbackSnackBar(
-        message: 'Nama lengkap wajib diisi.',
-        isError: true,
+      showAppSnackBar(
+        context,
+        'Nama lengkap wajib diisi.',
+        type: AppSnackType.error,
       );
       return;
     }
 
     if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
-      _showFeedbackSnackBar(
-        message: 'Masukkan alamat email yang valid.',
-        isError: true,
+      showAppSnackBar(
+        context,
+        'Masukkan alamat email yang valid.',
+        type: AppSnackType.error,
       );
       return;
     }
 
     if (password.length < 6) {
-      _showFeedbackSnackBar(
-        message: 'Kata sandi minimal 6 karakter.',
-        isError: true,
+      showAppSnackBar(
+        context,
+        'Kata sandi minimal 6 karakter.',
+        type: AppSnackType.error,
       );
       return;
     }
@@ -461,9 +623,11 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         setState(() => _isLoading = false);
 
-        _showFeedbackSnackBar(
-          message: 'Pendaftaran berhasil! Selamat datang di VegBox.',
-          isError: false,
+        // Snackbar tampil di MainNavigation, jadi posisikan di atas nav bar
+        showAppSnackBar(
+          context,
+          'Pendaftaran berhasil! Selamat datang di VegBox.',
+          aboveNavBar: true,
         );
 
         Navigator.pushReplacement(
@@ -474,7 +638,7 @@ class _LoginScreenState extends State<LoginScreen> {
       onError: (message) {
         if (!mounted) return;
         setState(() => _isLoading = false);
-        _showFeedbackSnackBar(message: message, isError: true);
+        showAppSnackBar(context, message, type: AppSnackType.error);
       },
     );
   }
@@ -514,479 +678,264 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         setState(() => _isGoogleLoading = false);
         if (message.isNotEmpty) {
-          _showFeedbackSnackBar(message: message, isError: true);
+          showAppSnackBar(context, message, type: AppSnackType.error);
         }
       },
     );
   }
 
-  /// Dialog Lupa Kata Sandi
-  void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController(
-      text: _identifierController.text.trim(),
-    );
-    bool isSending = false;
+  /// Bottom sheet Lupa Kata Sandi
+  Future<void> _showForgotPasswordDialog() async {
+    FocusScope.of(context).unfocus();
 
-    showDialog(
+    final String? sentTo = await showModalBottomSheet<String>(
       context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: pastelMint,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.lock_reset_rounded,
-                      color: primaryColor,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Atur Ulang Sandi',
-                    style: sBold.copyWith(
-                      color: textNeutralPrimary,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Masukkan email akun Anda. Kami akan mengirimkan tautan untuk mengatur ulang kata sandi.',
-                    style: sRegular.copyWith(
-                      color: const Color(0xFF64748B),
-                      fontSize: 12.5,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: resetEmailController,
-                    keyboardType: TextInputType.emailAddress,
-                    style: sMedium.copyWith(color: textNeutralPrimary),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAF8),
-                      hintText: 'nama@email.com',
-                      hintStyle: sRegular.copyWith(
-                        color: const Color(0xFF94A3B8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                          color: primaryColor,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actionsPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSending ? null : () => Navigator.pop(dialogCtx),
-                  child: Text(
-                    'Batal',
-                    style: sSemiBold.copyWith(
-                      color: const Color(0xFF94A3B8),
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: isSending
-                      ? null
-                      : () async {
-                          final email = resetEmailController.text.trim();
-                          if (email.isEmpty || !email.contains('@')) {
-                            _showFeedbackSnackBar(
-                              message: 'Masukkan email yang valid.',
-                              isError: true,
-                            );
-                            return;
-                          }
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      barrierColor: inkSoft.withValues(alpha: 0.45),
+      builder: (sheetCtx) =>
+          _ForgotPasswordSheet(initialEmail: _identifierController.text.trim()),
+    );
 
-                          setDialogState(() => isSending = true);
-
-                          final emailAuth = serviceLocator
-                              .get<FirebaseEmailAuth>();
-                          await emailAuth.sendPasswordReset(
-                            email: email,
-                            onSuccess: () {
-                              if (!mounted) return;
-                              Navigator.pop(dialogCtx);
-                              _showFeedbackSnackBar(
-                                message:
-                                    'Tautan reset sandi telah dikirim ke $email. Silakan periksa kotak masuk/spam.',
-                                isError: false,
-                              );
-                            },
-                            onError: (err) {
-                              setDialogState(() => isSending = false);
-                              _showFeedbackSnackBar(
-                                message: err,
-                                isError: true,
-                              );
-                            },
-                          );
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: isSending
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Text(
-                          'Kirim Link',
-                          style: sSemiBold.copyWith(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    if (!mounted || sentTo == null) return;
+    showAppSnackBar(
+      context,
+      'Tautan reset sandi telah dikirim ke $sentTo. Silakan periksa kotak masuk/spam.',
+      icon: Icons.mark_email_read_rounded,
     );
   }
 
-  /// 4A. Form Masuk
+  // ---------------------------------------------------------------------------
+  // 3. FORM
+  // ---------------------------------------------------------------------------
+
+  /// 3A. Form Masuk
   Widget _buildLoginForm() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildPillTextField(
+        AppTextField(
+          controller: _identifierController,
           label: 'Email',
           hint: 'nama@email.com',
-          controller: _identifierController,
+          prefixIcon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
         ),
-        const SizedBox(height: 18),
-        _buildPillTextField(
+        const SizedBox(height: 16),
+        AppTextField(
+          controller: _passwordController,
           label: 'Kata Sandi',
           hint: 'Masukkan kata sandi',
-          controller: _passwordController,
-          isPassword: true,
-          isPasswordVisible: isPasswordVisible,
-          onTogglePassword: () {
-            setState(() => isPasswordVisible = !isPasswordVisible);
+          prefixIcon: Icons.lock_outline_rounded,
+          obscureText: !isPasswordVisible,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.password],
+          suffix: _buildPasswordToggle(),
+          onSubmitted: (_) {
+            if (!_isLoading) _handleEmailLogin();
           },
         ),
         const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Checkbox Ingat Saya (Circle)
-            GestureDetector(
-              onTap: () => setState(() => rememberMe = !rememberMe),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: rememberMe ? primaryColor : Colors.white,
-                      border: Border.all(
-                        color: rememberMe
-                            ? primaryColor
-                            : const Color(0xFFCBD5E1),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: rememberMe
-                        ? const Icon(
-                            Icons.check_rounded,
-                            size: 13,
-                            color: Colors.white,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Ingat saya',
-                    style: xsRegular.copyWith(color: const Color(0xFF475569)),
-                  ),
-                ],
-              ),
-            ),
-
-            // Lupa Sandi
-            GestureDetector(
-              onTap: _showForgotPasswordDialog,
-              child: Text(
-                'Lupa sandi?',
-                style: xsSemiBold.copyWith(color: primaryColor),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 26),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _handleEmailLogin,
-            style:
-                ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  splashFactory: NoSplash.splashFactory,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                ).copyWith(
-                  overlayColor: WidgetStateProperty.all(Colors.transparent),
-                ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.2,
-                    ),
-                  )
-                : Text(
-                    'Masuk',
-                    style: sSemiBold.copyWith(
-                      color: Colors.white,
-                      fontSize: 15,
-                    ),
-                  ),
-          ),
+        _buildRememberRow(),
+        const SizedBox(height: 28),
+        AppButton(
+          label: 'Masuk',
+          trailingIcon: Icons.arrow_forward_rounded,
+          isLoading: _isLoading,
+          onPressed: _handleEmailLogin,
         ),
       ],
     );
   }
 
-  /// 4B. Form Daftar
+  /// 3B. Form Daftar
   Widget _buildRegisterForm() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildPillTextField(
+        AppTextField(
+          controller: _nameController,
           label: 'Nama Lengkap',
           hint: 'Masukkan nama lengkap',
-          controller: _nameController,
+          prefixIcon: Icons.person_outline_rounded,
           keyboardType: TextInputType.name,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.name],
         ),
-        const SizedBox(height: 18),
-        _buildPillTextField(
+        const SizedBox(height: 16),
+        AppTextField(
+          controller: _identifierController,
           label: 'Email',
           hint: 'nama@email.com',
-          controller: _identifierController,
+          prefixIcon: Icons.mail_outline_rounded,
           keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
         ),
-        const SizedBox(height: 18),
-        _buildPillTextField(
+        const SizedBox(height: 16),
+        AppTextField(
+          controller: _passwordController,
           label: 'Kata Sandi',
           hint: 'Minimal 6 karakter',
-          controller: _passwordController,
-          isPassword: true,
-          isPasswordVisible: isPasswordVisible,
-          onTogglePassword: () {
-            setState(() => isPasswordVisible = !isPasswordVisible);
+          prefixIcon: Icons.lock_outline_rounded,
+          obscureText: !isPasswordVisible,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.newPassword],
+          suffix: _buildPasswordToggle(),
+          onSubmitted: (_) {
+            if (!_isLoading) _handleEmailRegister();
           },
         ),
-        const SizedBox(height: 26),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _handleEmailRegister,
-            style:
-                ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  splashFactory: NoSplash.splashFactory,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                ).copyWith(
-                  overlayColor: WidgetStateProperty.all(Colors.transparent),
-                ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.2,
-                    ),
-                  )
-                : Text(
-                    'Daftar Sekarang',
-                    style: sSemiBold.copyWith(
-                      color: Colors.white,
-                      fontSize: 15,
-                    ),
-                  ),
-          ),
+        const SizedBox(height: 28),
+        AppButton(
+          label: 'Daftar Sekarang',
+          trailingIcon: Icons.arrow_forward_rounded,
+          isLoading: _isLoading,
+          onPressed: _handleEmailRegister,
         ),
       ],
     );
   }
 
-  /// Reusable Pill TextField
-  Widget _buildPillTextField({
-    required String label,
-    required String hint,
-    required TextEditingController controller,
-    bool isPassword = false,
-    bool isPasswordVisible = false,
-    VoidCallback? onTogglePassword,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: sSemiBold.copyWith(color: textNeutralPrimary, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          obscureText: isPassword && !isPasswordVisible,
-          keyboardType: keyboardType,
-          style: sMedium.copyWith(color: textNeutralPrimary),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            hintText: hint,
-            hintStyle: sRegular.copyWith(color: const Color(0xFF94A3B8)),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 22,
-              vertical: 16,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30),
-              borderSide: const BorderSide(
-                color: Color(0xFFE2E8F0),
-                width: 1.2,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30),
-              borderSide: const BorderSide(color: primaryColor, width: 1.5),
-            ),
-            suffixIcon: isPassword
-                ? Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: IconButton(
-                      icon: Icon(
-                        isPasswordVisible
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                        color: const Color(0xFF94A3B8),
-                        size: 20,
-                      ),
-                      onPressed: onTogglePassword,
-                    ),
-                  )
-                : null,
+  /// Tombol lihat / sembunyikan kata sandi
+  Widget _buildPasswordToggle() {
+    return Pressable(
+      onTap: () => setState(() => isPasswordVisible = !isPasswordVisible),
+      pressedScale: 0.88,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          child: Icon(
+            isPasswordVisible
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+            key: ValueKey<bool>(isPasswordVisible),
+            size: 20,
+            color: isPasswordVisible ? primaryColor : textDarkTertiary,
           ),
         ),
-      ],
+      ),
     );
   }
 
-  /// 5. Pembatas ATAU
-  Widget _buildOrDivider() {
+  /// Ingat saya + Lupa sandi
+  Widget _buildRememberRow() {
     return Row(
       children: [
-        const Expanded(
-          child: Divider(color: Color(0xFFE2E8F0), thickness: 0.8),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Text(
-            'ATAU',
-            style: xsMedium.copyWith(
-              color: const Color(0xFF94A3B8),
-              letterSpacing: 0.5,
+        Pressable(
+          onTap: () => setState(() => rememberMe = !rememberMe),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: rememberMe ? primaryColor : Colors.white,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(
+                      color: rememberMe ? primaryColor : borderNeutral,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 160),
+                    opacity: rememberMe ? 1 : 0,
+                    child: const Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Ingat saya', style: AppText.body.copyWith(fontSize: 13)),
+              ],
             ),
           ),
         ),
-        const Expanded(
-          child: Divider(color: Color(0xFFE2E8F0), thickness: 0.8),
+        const Spacer(),
+        Pressable(
+          onTap: _showForgotPasswordDialog,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              'Lupa sandi?',
+              style: AppText.captionStrong.copyWith(
+                color: primaryColor,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// 6. Tombol Social Login
+  // ---------------------------------------------------------------------------
+  // 4. PEMBATAS ATAU
+  // ---------------------------------------------------------------------------
+  Widget _buildOrDivider() {
+    Widget line({required bool reverse}) {
+      final colors = [borderNeutral.withValues(alpha: 0), borderNeutral];
+      return Expanded(
+        child: Container(
+          height: 1,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: reverse ? colors.reversed.toList() : colors,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        line(reverse: false),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text('atau lanjutkan dengan', style: AppText.caption),
+        ),
+        line(reverse: true),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. TOMBOL SOCIAL LOGIN
+  // ---------------------------------------------------------------------------
   Widget _buildSocialButtons() {
     return Row(
       children: [
         Expanded(
-          child: _buildSocialPill(
+          child: _SocialButton(
             label: 'Google',
             svgPath: 'assets/svg/google_logo.svg',
             isLoading: _isGoogleLoading,
-            onTap: _isGoogleLoading ? () {} : _handleGoogleSignIn,
+            onTap: _isGoogleLoading ? null : _handleGoogleSignIn,
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
-          child: _buildSocialPill(
+          child: _SocialButton(
             label: 'Apple',
             svgPath: 'assets/svg/apple_logo.svg',
-            isLoading: false,
             onTap: () {
-              _showFeedbackSnackBar(
-                message:
-                    'Masuk dengan Apple ID segera hadir di pembaruan berikutnya.',
-                isError: false,
+              showAppSnackBar(
+                context,
+                'Masuk dengan Apple ID segera hadir di pembaruan berikutnya.',
+                type: AppSnackType.info,
               );
             },
           ),
@@ -995,46 +944,265 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialPill({
-    required String label,
-    required String svgPath,
-    required VoidCallback onTap,
-    bool isLoading = false,
-  }) {
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF2EC),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(28),
-          onTap: onTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (isLoading)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    color: primaryColor,
-                    strokeWidth: 2,
-                  ),
-                )
-              else
-                SvgPicture.asset(svgPath, width: 20, height: 20),
-              const SizedBox(width: 10),
-              Text(
-                isLoading ? 'Memuat...' : label,
-                style: sSemiBold.copyWith(
-                  color: textNeutralPrimary,
-                  fontSize: 14,
+  // ---------------------------------------------------------------------------
+  // 6. AJAKAN PINDAH TAB
+  // ---------------------------------------------------------------------------
+  Widget _buildSwitchPrompt(bool isLoginTab) {
+    return Center(
+      child: Pressable(
+        onTap: () => _switchTab(isLoginTab ? 1 : 0),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: isLoginTab
+                      ? 'Belum punya akun? '
+                      : 'Sudah punya akun? ',
                 ),
+                TextSpan(
+                  text: isLoginTab ? 'Daftar sekarang' : 'Masuk',
+                  style: AppText.title.copyWith(
+                    color: primaryColor,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+            style: AppText.body.copyWith(fontSize: 13),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tombol social login (outline kapsul dengan logo SVG)
+// ─────────────────────────────────────────────────────────────────────────────
+class _SocialButton extends StatelessWidget {
+  final String label;
+  final String svgPath;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  const _SocialButton({
+    required this.label,
+    required this.svgPath,
+    required this.onTap,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(radiusPill),
+          border: Border.all(color: borderNeutral, width: 1.2),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  color: primaryColor,
+                  strokeWidth: 2,
+                ),
+              )
+            else
+              SvgPicture.asset(svgPath, width: 20, height: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                isLoading ? 'Memuat...' : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.title,
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom sheet Lupa Kata Sandi
+// Mengembalikan email tujuan (String) saat tautan reset berhasil dikirim.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ForgotPasswordSheet extends StatefulWidget {
+  final String initialEmail;
+
+  const _ForgotPasswordSheet({required this.initialEmail});
+
+  @override
+  State<_ForgotPasswordSheet> createState() => _ForgotPasswordSheetState();
+}
+
+class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
+  late final TextEditingController _resetEmailController =
+      TextEditingController(text: widget.initialEmail);
+  bool _isSending = false;
+
+  /// Pesan error ditampilkan di dalam sheet (snackbar akan tertutup sheet).
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _resetEmailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_isSending) return;
+
+    final email = _resetEmailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _errorMessage = 'Masukkan email yang valid.');
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+      _errorMessage = null;
+    });
+
+    final emailAuth = serviceLocator.get<FirebaseEmailAuth>();
+    await emailAuth.sendPasswordReset(
+      email: email,
+      onSuccess: () {
+        if (!mounted) return;
+        Navigator.pop(context, email);
+      },
+      onError: (err) {
+        if (!mounted) return;
+        setState(() {
+          _isSending = false;
+          _errorMessage = err;
+        });
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return PopScope(
+      canPop: !_isSending,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: keyboardInset),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SheetHandle(),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: AppGradients.forest,
+                      shape: BoxShape.circle,
+                      boxShadow: AppShadows.glow(forestDeep, strength: 0.25),
+                    ),
+                    child: const Icon(
+                      Icons.lock_reset_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text('LUPA KATA SANDI', style: AppText.overline),
+                const SizedBox(height: 6),
+                const Text('Atur ulang kata sandi', style: AppText.h2),
+                const SizedBox(height: 8),
+                Text(
+                  'Masukkan email akun Anda. Kami akan mengirimkan tautan untuk mengatur ulang kata sandi.',
+                  style: AppText.body.copyWith(fontSize: 13.5, height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                AppTextField(
+                  controller: _resetEmailController,
+                  label: 'Email',
+                  hint: 'nama@email.com',
+                  prefixIcon: Icons.mail_outline_rounded,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.email],
+                  onChanged: (_) {
+                    if (_errorMessage != null) {
+                      setState(() => _errorMessage = null);
+                    }
+                  },
+                  onSubmitted: (_) => _submit(),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topLeft,
+                  child: _errorMessage == null
+                      ? const SizedBox(width: double.infinity)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 10, left: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 1),
+                                child: Icon(
+                                  Icons.error_outline_rounded,
+                                  size: 16,
+                                  color: errorColor,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: AppText.caption.copyWith(
+                                    color: errorColor,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 24),
+                AppButton(
+                  label: 'Kirim Tautan Reset',
+                  icon: Icons.send_rounded,
+                  isLoading: _isSending,
+                  onPressed: _submit,
+                ),
+                const SizedBox(height: 6),
+                AppButton(
+                  label: 'Batal',
+                  variant: AppButtonVariant.ghost,
+                  height: 48,
+                  onPressed: _isSending ? null : () => Navigator.pop(context),
+                ),
+              ],
+            ),
           ),
         ),
       ),

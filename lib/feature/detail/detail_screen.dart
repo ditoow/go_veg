@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:vegetables_app/config/service_locator.dart';
 import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
 import 'package:vegetables_app/feature/detail/cubit/vegetable_detail_cubit.dart';
@@ -10,6 +11,10 @@ import 'package:vegetables_app/model/vegetable_model/vegetable_detail_model.dart
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
 import 'package:vegetables_app/ui/app_back_button.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class DetailScreen extends StatelessWidget {
@@ -40,762 +45,876 @@ class _DetailViewState extends State<_DetailView> {
   int _quantity = 1;
   int _selectedInfoTab = 0; // 0: Manfaat, 1: Tips Simpan, 2: Deskripsi
 
+  static const List<String> _infoTabs = ['Manfaat', 'Tips Simpan', 'Deskripsi'];
+
+  /// Radius bawah foto — sama dengan akhir animasi Hero dari kartu Home.
+  static const BorderRadius _heroRadius = BorderRadius.vertical(
+    bottom: Radius.circular(36),
+  );
+
+  /// Seberapa jauh sheet konten menimpa foto setelah transisi selesai.
+  static const double _sheetOverlap = 30;
+
+  /// Tinggi baris tombol atas (padding 8 + tombol 44 + padding 8).
+  static const double _topBarHeight = 60;
+
+  /// Tinggi bottom bar (padding 8 + tombol 52 + padding 8).
+  static const double _bottomBarHeight = 68;
+
+  final ScrollController _scrollController = ScrollController();
+
+  /// Sheet baru "naik" menimpa foto setelah Hero mendarat, supaya
+  /// pendaratan animasi Hero tetap mulus (tidak tertutup tiba-tiba).
+  Animation<double>? _routeAnimation;
+  bool _sheetSettled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == _routeAnimation) return;
+
+    _routeAnimation?.removeStatusListener(_handleRouteStatus);
+    _routeAnimation = animation;
+
+    if (animation == null || animation.status == AnimationStatus.completed) {
+      _sheetSettled = true;
+    } else {
+      animation.addStatusListener(_handleRouteStatus);
+    }
+  }
+
+  void _handleRouteStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_sheetSettled && mounted) {
+      setState(() => _sheetSettled = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _routeAnimation?.removeStatusListener(_handleRouteStatus);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  double get _scrollOffset =>
+      _scrollController.hasClients ? _scrollController.offset : 0;
+
   @override
   Widget build(BuildContext context) {
     final item = widget.vegetable;
-    final int price = item.harga;
-    final String name = item.nama;
-    final String imageUrl = item.gambar;
-    final String tag = item.kategori;
+    final media = MediaQuery.of(context);
+    final double heroHeight = (media.size.height * 0.5).clamp(340.0, 480.0);
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // 1. SCROLLABLE PRODUCT DETAILS
+          // 1. FOTO PRODUK (parallax saat scroll, melar saat overscroll)
+          _buildHeroImage(item.gambar, heroHeight),
+
+          // 2. KONTEN — sheet putih yang menimpa foto
           CustomScrollView(
-            physics: const BouncingScrollPhysics(),
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
-              // 1A. HERO IMAGE APP BAR
               SliverToBoxAdapter(
-                child: _buildHeroImageSection(imageUrl: imageUrl, tag: tag),
-              ),
-
-              // 1B. PRODUCT INFO BODY
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 20),
-
-                      // Status Panen & Asal Petani (Dinamis dari API)
-                      BlocBuilder<VegetableDetailCubit, VegetableDetailState>(
-                        builder: (context, state) {
-                          String asal = 'Petani Lokal';
-                          if (state is VegetableDetailLoaded &&
-                              state.detail.asal != null) {
-                            asal = state.detail.asal!;
-                          }
-                          return _buildFarmOriginBadge(asal);
-                        },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Nama Produk
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: sBold.copyWith(
-                              color: textNeutralPrimary,
-                              fontSize: 22,
-                              height: 1.25,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.kategori,
-                            style: sMedium.copyWith(
-                              color: const Color(0xFF94A3B8),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // Rating Statis
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: pastelYellow,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              color: Color(0xFFF59E0B),
-                              size: 16,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '4.9',
-                              style: sBold.copyWith(
-                                color: const Color(0xFFB45309),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Harga
-                      Text(
-                        'Rp ${NumberFormat('#,###', 'id_ID').format(price)}',
-                        style: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: primaryColor,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-
-                      const SizedBox(height: 22),
-                      const Divider(color: Color(0xFFF1F5F9), thickness: 1.2),
-                      const SizedBox(height: 16),
-
-                      // 4 QUICK SPEC CARDS (Nutrisi dari API)
-                      BlocBuilder<VegetableDetailCubit, VegetableDetailState>(
-                        builder: (context, state) {
-                          NutrisiModel? nutrisi;
-                          if (state is VegetableDetailLoaded) {
-                            nutrisi = state.detail.nutrisi;
-                          }
-                          return _buildSpecGrid(nutrisi);
-                        },
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // TAB INFORMASI (Manfaat Nutrisi / Tips Simpan / Olahan)
-                      _buildInfoTabs(),
-
-                      const SizedBox(height: 14),
-
-                      // ISI TAB KONTEN (Dinamis dari API)
-                      BlocBuilder<VegetableDetailCubit, VegetableDetailState>(
-                        builder: (context, state) {
-                          if (state is VegetableDetailLoading) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: primaryColor,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          VegetableDetailModel? detail;
-                          if (state is VegetableDetailLoaded) {
-                            detail = state.detail;
-                          }
-                          return _buildInfoTabContent(detail);
-                        },
-                      ),
-
-                      const SizedBox(height: 120), // Spasi untuk bottom bar
-                    ],
-                  ),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: _sheetSettled ? 1 : 0),
+                  duration: const Duration(milliseconds: 420),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, t, _) =>
+                      SizedBox(height: heroHeight - _sheetOverlap * t),
                 ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildContentSheet(item, media.padding.bottom),
               ),
             ],
           ),
 
-          // 2. FLOATING TOP NAV BAR (Back button & Share)
+          // 3. FLOATING TOP BAR (kembali & favorit)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: _buildFloatingTopBar(context),
+            child: _buildFloatingTopBar(heroHeight, media.padding.top),
           ),
 
-          // 3. STICKY BOTTOM CHECKOUT / ADD-TO-CART BAR
+          // 4. FLOATING BOTTOM BAR (jumlah + tambah ke keranjang)
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomActionBar(price, name),
+            left: 16,
+            right: 16,
+            bottom: 12 + media.padding.bottom,
+            child: _buildBottomActionBar(item),
           ),
         ],
       ),
     );
   }
 
-  /// 1A. Hero Showcase Image (Full Immersive Edge-to-Edge)
-  Widget _buildHeroImageSection({
-    required String imageUrl,
-    required String tag,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 380,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Foto Produk Sayuran Full Bleed dengan Seamless Hero Animation
-          Hero(
-            tag: imageUrl,
-            flightShuttleBuilder:
-                (
-                  flightContext,
-                  animation,
-                  flightDirection,
-                  fromHeroContext,
-                  toHeroContext,
-                ) {
-                  final BorderRadiusTween borderRadiusTween = BorderRadiusTween(
-                    begin: const BorderRadius.vertical(
-                      top: Radius.circular(17),
-                    ),
-                    end: const BorderRadius.vertical(
-                      bottom: Radius.circular(28),
-                    ),
-                  );
-
-                  final curvedAnimation = CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOutCubic,
-                  );
-
-                  return AnimatedBuilder(
-                    animation: curvedAnimation,
-                    builder: (context, child) {
-                      return ClipRRect(
-                        borderRadius:
-                            borderRadiusTween.evaluate(curvedAnimation) ??
-                            BorderRadius.zero,
-                        child: Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stackTrace) => Container(
-                                color: const Color(0xFFF1F5F2),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.eco_rounded,
-                                    size: 50,
-                                    color: primaryColor,
-                                  ),
-                                ),
-                              ),
-                        ),
-                      );
-                    },
-                  );
-                },
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(28),
-              ),
-              child: Image.network(
-                imageUrl,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: const Color(0xFFF1F5F2),
-                    child: const Center(
-                      child: Icon(
-                        Icons.eco_rounded,
-                        size: 90,
-                        color: primaryColor,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // Gradient Overlay Atas (agar Status Bar & Tombol Navigasi kontras jelas)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 120,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(28),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.black.withValues(alpha: 0.4),
-                      Colors.transparent,
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Tag Status Badge (Pojok Kiri Bawah Foto)
-          Positioned(
-            bottom: 18,
-            left: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.verified_rounded,
-                    color: primaryColor,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    tag,
-                    style: sSemiBold.copyWith(
-                      color: primaryColor,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Floating Top Bar (Back & Favorite)
-  Widget _buildFloatingTopBar(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  // ---------------------------------------------------------------------------
+  // 1. HERO IMAGE
+  // ---------------------------------------------------------------------------
+  Widget _buildHeroImage(String imageUrl, double heroHeight) {
+    return ListenableBuilder(
+      listenable: _scrollController,
+      builder: (context, child) {
+        final offset = _scrollOffset;
+        return Positioned(
+          top: offset > 0 ? -offset * 0.4 : 0,
+          left: 0,
+          right: 0,
+          height: heroHeight + (offset < 0 ? -offset : 0),
+          child: child!,
+        );
+      },
+      child: Hero(
+        tag: imageUrl,
+        flightShuttleBuilder: _buildHeroShuttle,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            // Tombol Kembali Reusable
-            const AppBackButton(isFrosted: true),
-
-            // Tombol Favorit (Love Icon)
-            BlocBuilder<FavoriteCubit, FavoriteState>(
-              builder: (context, favState) {
-                final isFav = context.read<FavoriteCubit>().isFavorite(
-                  widget.vegetable.id,
-                );
-
-                return Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(21),
-                      onTap: () {
-                        context.read<FavoriteCubit>().toggleFavorite(
-                          widget.vegetable,
-                        );
-                      },
-                      child: Icon(
-                        isFav
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        color: isFav
-                            ? const Color(0xFFEF4444)
-                            : textNeutralPrimary,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+            VegImage(url: imageUrl, borderRadius: _heroRadius, iconSize: 64),
+            const _TopScrim(),
           ],
         ),
       ),
     );
   }
 
-  /// Badge Asal Petani & Kesegaran
-  Widget _buildFarmOriginBadge(String asal) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF2EC),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.nature_people_rounded,
-            color: primaryColor,
-            size: 15,
+  /// Sama dengan shuttle di kartu Home: radius kartu -> radius bawah 36.
+  Widget _buildHeroShuttle(
+    BuildContext flightContext,
+    Animation<double> animation,
+    HeroFlightDirection flightDirection,
+    BuildContext fromHeroContext,
+    BuildContext toHeroContext,
+  ) {
+    final imageUrl = widget.vegetable.gambar;
+    final radiusTween = BorderRadiusTween(
+      begin: BorderRadius.circular(radiusLg - 2),
+      end: _heroRadius,
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final t = Curves.easeInOutCubic.transform(animation.value);
+        return ClipRRect(
+          borderRadius: radiusTween.transform(t) ?? BorderRadius.zero,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              VegImage(url: imageUrl, iconSize: 64),
+              _TopScrim(opacity: t),
+            ],
           ),
-          const SizedBox(width: 6),
-          Text(
-            'Panen Segar • $asal',
-            style: sMedium.copyWith(color: primaryColor, fontSize: 11),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. FLOATING TOP BAR — berubah jadi bar putih saat konten di-scroll
+  // ---------------------------------------------------------------------------
+  Widget _buildFloatingTopBar(double heroHeight, double topInset) {
+    return ListenableBuilder(
+      listenable: _scrollController,
+      builder: (context, _) {
+        final sheetTop = heroHeight - _sheetOverlap - _scrollOffset;
+        final barBottom = topInset + _topBarHeight;
+        final t = ((barBottom + 48 - sheetTop) / 48).clamp(0.0, 1.0);
+
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: t > 0.5 ? AppTheme.darkStatusBar : AppTheme.lightStatusBar,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(16, topInset + 8, 16, 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: t),
+              boxShadow: [
+                BoxShadow(
+                  color: inkSoft.withValues(alpha: 0.06 * t),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const AppBackButton(isFrosted: true),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Opacity(
+                    opacity: t,
+                    child: Text(
+                      widget.vegetable.nama,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: AppText.h3,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                BlocBuilder<FavoriteCubit, FavoriteState>(
+                  builder: (context, favState) {
+                    final isFav = context.read<FavoriteCubit>().isFavorite(
+                      widget.vegetable.id,
+                    );
+                    return AppCircleButton(
+                      icon: isFav
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      iconColor: isFav ? errorColor : textNeutralPrimary,
+                      onTap: () => context
+                          .read<FavoriteCubit>()
+                          .toggleFavorite(widget.vegetable),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. CONTENT SHEET
+  // ---------------------------------------------------------------------------
+  Widget _buildContentSheet(VegetableModel item, double bottomInset) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        28,
+        20,
+        _bottomBarHeight + 12 + bottomInset + 32,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(radius2xl),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: inkSoft.withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, -8),
           ),
         ],
+      ),
+      child: BlocBuilder<VegetableDetailCubit, VegetableDetailState>(
+        builder: (context, state) {
+          final isLoading =
+              state is VegetableDetailLoading ||
+              state is VegetableDetailInitial;
+          final VegetableDetailModel? detail = state is VegetableDetailLoaded
+              ? state.detail
+              : null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Kategori & asal petani (dinamis dari API)
+              _buildBadges(item, detail, isLoading),
+              const SizedBox(height: 14),
+
+              // Nama produk
+              Text(item.nama, style: AppText.h1),
+              const SizedBox(height: 18),
+
+              // Harga & rating
+              _buildPriceRow(item.harga),
+              const SizedBox(height: 30),
+
+              // Nutrisi (dinamis dari API)
+              const SectionHeader(
+                overline: 'Per 100 gram',
+                title: 'Kandungan Gizi',
+                padding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 14),
+              isLoading
+                  ? _buildSpecGridSkeleton()
+                  : _buildSpecGrid(detail?.nutrisi),
+              const SizedBox(height: 30),
+
+              if (state is VegetableDetailError) ...[
+                _buildErrorNotice(state.message),
+                const SizedBox(height: 16),
+              ],
+
+              // Tab informasi (Manfaat / Tips Simpan / Deskripsi)
+              _buildInfoTabs(),
+              const SizedBox(height: 18),
+              _buildInfoTabContent(detail, isLoading),
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// 4 Spec Cards Nutrisi dari API
-  Widget _buildSpecGrid(NutrisiModel? nutrisi) {
+  Widget _buildBadges(
+    VegetableModel item,
+    VegetableDetailModel? detail,
+    bool isLoading,
+  ) {
+    final asal = detail?.asal ?? 'Petani Lokal';
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        StatusPill(label: item.kategori, icon: Icons.eco_rounded),
+        if (isLoading)
+          _shimmer(_skeletonBox(width: 150, height: 23, radius: radiusPill))
+        else
+          StatusPill(
+            label: 'Panen segar · $asal',
+            icon: Icons.nature_people_rounded,
+            color: textDarkSecondary,
+            background: surfaceMuted,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPriceRow(int price) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: _buildSpecCard(
-            title: 'Kalori',
-            value:
-                nutrisi?.kalori?.replaceAll('/ 100g', '').trim() ?? '23 kcal',
-            icon: Icons.local_fire_department_outlined,
-            color: const Color(0xFFEA580C),
-            bg: pastelOrange,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'HARGA',
+                style: AppText.overline.copyWith(color: textDarkTertiary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                formatRupiah(price),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.price.copyWith(
+                  fontSize: 30,
+                  height: 1.1,
+                  letterSpacing: -0.9,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildSpecCard(
-            title: 'Protein',
-            value: nutrisi?.protein ?? '2.9g',
-            icon: Icons.fitness_center_rounded,
-            color: primaryColor,
-            bg: pastelMint,
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+          decoration: BoxDecoration(
+            color: pastelYellow,
+            borderRadius: BorderRadius.circular(radiusPill),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildSpecCard(
-            title: 'Serat',
-            value: nutrisi?.serat ?? '2.2g',
-            icon: Icons.grass_rounded,
-            color: const Color(0xFF0284C7),
-            bg: const Color(0xFFE0F2FE),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildSpecCard(
-            title: 'Karbohidrat',
-            value: nutrisi?.karbohidrat ?? '3.6g',
-            icon: Icons.grain_rounded,
-            color: const Color(0xFF7C3AED),
-            bg: pastelPurple,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.star_rounded, color: warningColor, size: 18),
+              const SizedBox(width: 4),
+              Text('4.9', style: AppText.title.copyWith(fontSize: 13)),
+              Text(
+                ' / 5',
+                style: AppText.caption.copyWith(fontSize: 11.5),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSpecCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required Color bg,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAF8),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+  // ---------------------------------------------------------------------------
+  // 4. NUTRISI
+  // ---------------------------------------------------------------------------
+  Widget _buildSpecGrid(NutrisiModel? nutrisi) {
+    final specs = [
+      _NutrientCard(
+        label: 'Kalori',
+        value: nutrisi?.kalori?.replaceAll('/ 100g', '').trim() ?? '23 kcal',
+        icon: Icons.local_fire_department_rounded,
+        color: secondaryColor600,
+        background: pastelOrange,
       ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: xsRegular.copyWith(
-              color: const Color(0xFF94A3B8),
-              fontSize: 10,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: sBold.copyWith(color: textNeutralPrimary, fontSize: 11),
-          ),
-        ],
+      _NutrientCard(
+        label: 'Protein',
+        value: nutrisi?.protein ?? '2.9g',
+        icon: Icons.fitness_center_rounded,
+        color: primaryColor,
+        background: pastelMint,
       ),
-    );
-  }
-
-  /// Tabs Keterangan Informasi
-  Widget _buildInfoTabs() {
-    final tabs = ['Manfaat', 'Tips Simpan', 'Deskripsi'];
+      _NutrientCard(
+        label: 'Serat',
+        value: nutrisi?.serat ?? '2.2g',
+        icon: Icons.grass_rounded,
+        color: blue700,
+        background: pastelBlue,
+      ),
+      _NutrientCard(
+        label: 'Karbohidrat',
+        value: nutrisi?.karbohidrat ?? '3.6g',
+        icon: Icons.grain_rounded,
+        color: jacarta500,
+        background: pastelPurple,
+      ),
+    ];
 
     return Row(
-      children: List.generate(tabs.length, (index) {
-        final isSelected = _selectedInfoTab == index;
-        return Padding(
-          padding: const EdgeInsets.only(right: 8.0),
-          child: GestureDetector(
-            onTap: () => setState(() => _selectedInfoTab = index),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFFD8F2E1)
-                    : const Color(0x00D8F2E1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                tabs[index],
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color: isSelected
-                      ? textNeutralPrimary
-                      : const Color(0xFF94A3B8),
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
+      children: [
+        for (int i = 0; i < specs.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: specs[i]),
+        ],
+      ],
     );
   }
 
-  /// Isi Konten Tab Dinamis dari API
-  Widget _buildInfoTabContent(VegetableDetailModel? detail) {
-    if (_selectedInfoTab == 0) {
-      final manfaatList = detail?.manfaat;
-      if (manfaatList != null && manfaatList.isNotEmpty) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: manfaatList.map((m) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 3),
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: pastelMint,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_rounded,
-                      color: primaryColor,
-                      size: 14,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      m,
-                      style: sRegular.copyWith(
-                        color: const Color(0xFF64748B),
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                    ),
-                  ),
-                ],
+  Widget _buildSpecGridSkeleton() {
+    return Row(
+      children: [
+        for (int i = 0; i < 4; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(radiusLg),
+                boxShadow: AppShadows.soft,
               ),
-            );
-          }).toList(),
-        );
-      }
-      return Text(
-        detail?.deskripsi ?? widget.vegetable.deskripsi,
-        style: sRegular.copyWith(
-          color: const Color(0xFF64748B),
-          fontSize: 13,
-          height: 1.55,
-        ),
-      );
-    } else if (_selectedInfoTab == 1) {
-      final tips = detail?.tipsPenyimpanan;
-      return Text(
-        tips ??
-            'Simpan dalam wadah kedap udara beralas tisu di lemari es untuk menjaga kerenyahannya.',
-        style: sRegular.copyWith(
-          color: const Color(0xFF64748B),
-          fontSize: 13,
-          height: 1.55,
-        ),
-      );
-    } else {
-      return Text(
-        detail?.deskripsi ?? widget.vegetable.deskripsi,
-        style: sRegular.copyWith(
-          color: const Color(0xFF64748B),
-          fontSize: 13,
-          height: 1.55,
-        ),
-      );
-    }
+              child: _shimmer(
+                Column(
+                  children: [
+                    _skeletonBox(width: 36, height: 36, radius: radiusPill),
+                    const SizedBox(height: 12),
+                    _skeletonBox(width: 40, height: 12),
+                    const SizedBox(height: 6),
+                    _skeletonBox(width: 52, height: 9),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
-  /// 3. Sticky Bottom Action Bar (Quantity + Button)
-  Widget _buildBottomActionBar(int unitPrice, String productName) {
-    final int subtotal = unitPrice * _quantity;
-
+  Widget _buildErrorNotice(String message) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: const Border(
-          top: BorderSide(color: Color(0xFFF1F5F9), width: 1.2),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, -6),
+        color: red50,
+        borderRadius: BorderRadius.circular(radiusMd),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.wifi_off_rounded,
+              color: errorColor,
+              size: 17,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Detail lengkap belum termuat',
+                  style: AppText.captionStrong.copyWith(
+                    color: textNeutralPrimary,
+                  ),
+                ),
+                Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(fontSize: 11.5),
+                ),
+              ],
+            ),
+          ),
+          Pressable(
+            onTap: () => context.read<VegetableDetailCubit>().getDetail(
+              widget.vegetable.id,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Text(
+                'Coba lagi',
+                style: AppText.captionStrong.copyWith(color: primaryColor),
+              ),
+            ),
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            // Quantity Stepper (- 1 +)
-            Container(
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAF8),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove_rounded, size: 18),
-                    color: _quantity > 1
-                        ? textNeutralPrimary
-                        : const Color(0xFFCBD5E1),
-                    onPressed: () {
-                      if (_quantity > 1) {
-                        setState(() => _quantity--);
-                      }
-                    },
-                  ),
-                  Text(
-                    '$_quantity',
-                    style: sBold.copyWith(
-                      color: textNeutralPrimary,
-                      fontSize: 15,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    color: primaryColor,
-                    onPressed: () {
-                      setState(() => _quantity++);
-                    },
-                  ),
-                ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. TAB INFORMASI — segmented control dengan indikator geser
+  // ---------------------------------------------------------------------------
+  Widget _buildInfoTabs() {
+    final count = _infoTabs.length;
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: surfaceMuted,
+        borderRadius: BorderRadius.circular(radiusPill),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          AnimatedAlign(
+            alignment: Alignment(-1 + 2 * _selectedInfoTab / (count - 1), 0),
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: FractionallySizedBox(
+              widthFactor: 1 / count,
+              heightFactor: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(radiusPill),
+                  boxShadow: AppShadows.soft,
+                ),
               ),
             ),
-
-            const SizedBox(width: 14),
-
-            // Tombol Tambah ke Keranjang
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    context.read<CartCubit>().addItem(
-                      widget.vegetable,
-                      quantity: _quantity,
-                    );
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '$_quantity x $productName (Rp $subtotal) masuk keranjang',
-                          style: sMedium.copyWith(color: Colors.white),
-                        ),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: primaryColor,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+          ),
+          Row(
+            children: [
+              for (int i = 0; i < count; i++)
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _selectedInfoTab = i),
+                    child: Center(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: _selectedInfoTab == i
+                            ? AppText.title.copyWith(fontSize: 13)
+                            : AppText.captionStrong.copyWith(
+                                fontSize: 13,
+                                color: textDarkTertiary,
+                              ),
+                        child: Text(
+                          _infoTabs[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    );
-
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.shopping_bag_outlined,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '+ Keranjang (Rp $subtotal)',
-                        style: sSemiBold.copyWith(
-                          color: Colors.white,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Isi konten tab dinamis dari API
+  Widget _buildInfoTabContent(VegetableDetailModel? detail, bool isLoading) {
+    final Widget content;
+
+    if (isLoading) {
+      content = _shimmer(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _skeletonBox(width: double.infinity, height: 12),
+            const SizedBox(height: 10),
+            _skeletonBox(width: double.infinity, height: 12),
+            const SizedBox(height: 10),
+            _skeletonBox(width: 200, height: 12),
+          ],
+        ),
+      );
+    } else if (_selectedInfoTab == 0) {
+      final manfaatList = detail?.manfaat;
+      if (manfaatList != null && manfaatList.isNotEmpty) {
+        content = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final m in manfaatList)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      margin: const EdgeInsets.only(top: 1),
+                      decoration: const BoxDecoration(
+                        color: primaryColor50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: primaryColor,
+                        size: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(m, style: AppText.body)),
+                  ],
+                ),
+              ),
+          ],
+        );
+      } else {
+        content = Text(
+          detail?.deskripsi ?? widget.vegetable.deskripsi,
+          style: AppText.body,
+        );
+      }
+    } else if (_selectedInfoTab == 1) {
+      content = Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: bgApp,
+          borderRadius: BorderRadius.circular(radiusLg),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: AppShadows.soft,
+              ),
+              child: const Icon(
+                Icons.kitchen_rounded,
+                color: primaryColor,
+                size: 19,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                detail?.tipsPenyimpanan ??
+                    'Simpan dalam wadah kedap udara beralas tisu di lemari es untuk menjaga kerenyahannya.',
+                style: AppText.body,
               ),
             ),
           ],
         ),
+      );
+    } else {
+      content = Text(
+        detail?.deskripsi ?? widget.vegetable.deskripsi,
+        style: AppText.body,
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.04),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.topLeft,
+        children: [...previousChildren, ?currentChild],
+      ),
+      child: KeyedSubtree(
+        key: ValueKey('$_selectedInfoTab-$isLoading'),
+        child: content,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. FLOATING BOTTOM BAR (jumlah + tombol keranjang)
+  // ---------------------------------------------------------------------------
+  Widget _buildBottomActionBar(VegetableModel item) {
+    final int subtotal = item.harga * _quantity;
+
+    return Container(
+      height: _bottomBarHeight,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radiusPill),
+        boxShadow: AppShadows.floating,
+      ),
+      child: Row(
+        children: [
+          QuantityStepper(
+            value: _quantity,
+            onDecrement: _quantity > 1
+                ? () => setState(() => _quantity--)
+                : null,
+            onIncrement: () => setState(() => _quantity++),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: AppButton(
+              label: formatRupiah(subtotal),
+              icon: Icons.add_shopping_cart_rounded,
+              height: 52,
+              onPressed: () {
+                context.read<CartCubit>().addItem(item, quantity: _quantity);
+                showAppSnackBar(
+                  context,
+                  '$_quantity × ${item.nama} (${formatRupiah(subtotal)}) masuk keranjang',
+                  icon: Icons.shopping_basket_rounded,
+                  aboveNavBar: true,
+                );
+
+                Navigator.pop(context);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Skeleton helpers
+  // ---------------------------------------------------------------------------
+  Widget _shimmer(Widget child) {
+    return Shimmer.fromColors(
+      baseColor: surfaceMuted,
+      highlightColor: Colors.white,
+      child: child,
+    );
+  }
+
+  Widget _skeletonBox({
+    required double width,
+    required double height,
+    double radius = 6,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+/// Gradasi gelap tipis di atas foto agar status bar & tombol tetap kontras.
+class _TopScrim extends StatelessWidget {
+  final double opacity;
+
+  const _TopScrim({this.opacity = 1});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: double.infinity,
+          height: 150,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.34 * opacity),
+                Colors.black.withValues(alpha: 0),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Kartu mini nutrisi.
+class _NutrientCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final Color background;
+
+  const _NutrientCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radiusLg),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: background, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: AppText.title.copyWith(fontSize: 13.5),
+            ),
+          ),
+          const SizedBox(height: 1),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: AppText.caption.copyWith(fontSize: 11),
+            ),
+          ),
+        ],
       ),
     );
   }

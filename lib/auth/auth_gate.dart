@@ -1,7 +1,6 @@
-import 'dart:math' as math;
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:vegetables_app/config/service_locator.dart';
 import 'package:vegetables_app/config/user_preference.dart';
@@ -9,6 +8,9 @@ import 'package:vegetables_app/feature/login/login_screen.dart';
 import 'package:vegetables_app/feature/main_navigation/main_navigation.dart';
 import 'package:vegetables_app/firebase/firebase_analytics_helper.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/dimension.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class AuthGate extends StatefulWidget {
@@ -21,75 +23,82 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
   static const int _sessionExpiryDays = 7;
 
+  /// Ikon status bar & navigation bar terang di atas latar hijau hutan.
+  static final SystemUiOverlayStyle _overlayStyle = AppTheme.lightStatusBar
+      .copyWith(
+        systemNavigationBarColor: forestDeep,
+        systemNavigationBarIconBrightness: Brightness.light,
+      );
+
   // Animation Controllers
-  late final AnimationController _logoController;
-  late final AnimationController _fadeController;
-  late final AnimationController _blobController;
-  late final AnimationController _dotsController;
+  late final AnimationController _introController;
+  late final AnimationController _ambientController;
+  late final AnimationController _loaderController;
 
   // Animations
-  late final Animation<double> _logoScale;
   late final Animation<double> _logoOpacity;
-  late final Animation<double> _fadeIn;
-  late final Animation<double> _blobRotate;
+  late final Animation<double> _logoScale;
+  late final Animation<double> _textFade;
+  late final Animation<Offset> _textSlide;
+  late final Animation<double> _loaderFade;
 
   @override
   void initState() {
     super.initState();
 
-    // Logo scale-in bounce
-    _logoController = AnimationController(
-      duration: const Duration(milliseconds: 900),
-      vsync: this,
-    );
-    _logoScale = CurvedAnimation(
-      parent: _logoController,
-      curve: Curves.elasticOut,
-    );
-    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
-      ),
-    );
-
-    // Text & dots fade in
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _fadeIn = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
-
-    // Background blob slow rotation
-    _blobController = AnimationController(
-      duration: const Duration(seconds: 12),
-      vsync: this,
-    )..repeat();
-    _blobRotate = Tween<double>(
-      begin: 0,
-      end: 2 * math.pi,
-    ).animate(_blobController);
-
-    // Bouncing dots animation loop
-    _dotsController = AnimationController(
+    // Intro berurutan: logo → nama & tagline → loader (total ±1,2 detik)
+    _introController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
+    );
+    _logoOpacity = CurvedAnimation(
+      parent: _introController,
+      curve: const Interval(0.0, 0.35, curve: Curves.easeOut),
+    );
+    _logoScale = Tween<double>(begin: 0.84, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _introController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+      ),
+    );
+    _textFade = CurvedAnimation(
+      parent: _introController,
+      curve: const Interval(0.3, 0.75, curve: Curves.easeOut),
+    );
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _introController,
+            curve: const Interval(0.3, 0.8, curve: Curves.easeOutCubic),
+          ),
+        );
+    _loaderFade = CurvedAnimation(
+      parent: _introController,
+      curve: const Interval(0.55, 1.0, curve: Curves.easeOut),
+    );
+
+    // Gerak ambient yang sangat halus (cahaya logo "bernapas", ornamen melayang)
+    _ambientController = AnimationController(
+      duration: const Duration(milliseconds: 2600),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    // Loader garis tipis yang bergeser
+    _loaderController = AnimationController(
+      duration: const Duration(milliseconds: 1300),
+      vsync: this,
     )..repeat();
 
-    // Sequence: logo → fade text → auth check
-    _logoController.forward().then((_) {
-      _fadeController.forward();
-    });
+    _introController.forward();
 
     _handleAuthCheck();
   }
 
   @override
   void dispose() {
-    _logoController.dispose();
-    _fadeController.dispose();
-    _blobController.dispose();
-    _dotsController.dispose();
+    _introController.dispose();
+    _ambientController.dispose();
+    _loaderController.dispose();
     super.dispose();
   }
 
@@ -181,273 +190,309 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _overlayStyle,
+      child: Scaffold(
+        backgroundColor: forestDeep,
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: AppGradients.forest),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // ── Ornamen dekoratif ──────────────────────────────────────
+              _buildDecorations(),
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
-      body: Stack(
-        children: [
-          // ── Decorative Background Blobs ──────────────────────────────
-          AnimatedBuilder(
-            animation: _blobRotate,
-            builder: (context, _) {
-              return Stack(
-                children: [
-                  // Top-right blob
-                  Positioned(
-                    top: -60,
-                    right: -60,
-                    child: Transform.rotate(
-                      angle: _blobRotate.value * 0.3,
-                      child: _buildBlob(
-                        220,
-                        primaryColor.withValues(alpha: 0.07),
+              // ── Konten utama ───────────────────────────────────────────
+              SafeArea(
+                child: Column(
+                  children: [
+                    const Spacer(flex: 5),
+                    _buildLogo(),
+                    const SizedBox(height: 30),
+                    FadeTransition(
+                      opacity: _textFade,
+                      child: SlideTransition(
+                        position: _textSlide,
+                        child: _buildBrand(),
                       ),
                     ),
-                  ),
-                  // Bottom-left blob
-                  Positioned(
-                    bottom: -80,
-                    left: -70,
-                    child: Transform.rotate(
-                      angle: -_blobRotate.value * 0.2,
-                      child: _buildBlob(
-                        260,
-                        secondaryColor.withValues(alpha: 0.06),
-                      ),
-                    ),
-                  ),
-                  // Center-left small accent
-                  Positioned(
-                    top: size.height * 0.38,
-                    left: -30,
-                    child: Transform.rotate(
-                      angle: _blobRotate.value * 0.5,
-                      child: _buildBlob(
-                        120,
-                        primaryColor200.withValues(alpha: 0.18),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                    const SizedBox(height: 40),
+                    FadeTransition(opacity: _loaderFade, child: _buildLoader()),
+                    const Spacer(flex: 6),
+                    FadeTransition(opacity: _loaderFade, child: _buildFooter()),
+                  ],
+                ),
+              ),
+            ],
           ),
-
-          // ── Main Content ─────────────────────────────────────────────
-          SafeArea(
-            child: Column(
-              children: [
-                const Spacer(flex: 3),
-
-                // Logo with bounce animation
-                ScaleTransition(
-                  scale: _logoScale,
-                  child: FadeTransition(
-                    opacity: _logoOpacity,
-                    child: _buildLogo(),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Brand Name + Tagline
-                FadeTransition(
-                  opacity: _fadeIn,
-                  child: Column(
-                    children: [
-                      Text(
-                        'VegBox',
-                        style: xlBold.copyWith(
-                          color: primaryColor,
-                          fontSize: 34,
-                          letterSpacing: -1.0,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Sayur Segar · Langsung Dari Petani',
-                        style: xsRegular.copyWith(
-                          color: textDarkSecondary,
-                          fontSize: 13,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 52),
-
-                // Bouncing Dots Loader
-                FadeTransition(
-                  opacity: _fadeIn,
-                  child: _buildBouncingDots(),
-                ),
-
-                const Spacer(flex: 4),
-
-                // Footer
-                FadeTransition(
-                  opacity: _fadeIn,
-                  child: _buildFooter(),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   // ── Helper Widgets ──────────────────────────────────────────────────────────
 
-  Widget _buildLogo() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Outer glow ring
-        Container(
-          width: 110,
-          height: 110,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                primaryColor.withValues(alpha: 0.12),
-                primaryColor.withValues(alpha: 0.0),
-              ],
-            ),
-          ),
-        ),
-        // Main icon container
-        Container(
-          width: 82,
-          height: 82,
-          decoration: BoxDecoration(
-            color: pastelMint,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: primaryColor.withValues(alpha: 0.25),
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: primaryColor.withValues(alpha: 0.15),
-                blurRadius: 28,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: primaryColor.withValues(alpha: 0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Icon(Icons.eco_rounded, size: 44, color: primaryColor),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBouncingDots() {
+  Widget _buildDecorations() {
     return AnimatedBuilder(
-      animation: _dotsController,
+      animation: _ambientController,
       builder: (context, _) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(3, (i) {
-            // Animasi bounce stagger menggunakan gelombang sin
-            final double progress =
-                (_dotsController.value * 2 * math.pi) - (i * 0.9);
-            final double bounce = math.sin(progress);
-            final double offsetY = bounce > 0 ? -bounce * 10.0 : 0.0;
-            final Color dotColor = i == 1 ? secondaryColor : primaryColor;
-            final double dotSize = i == 1 ? 9.0 : 7.0;
+        final t = Curves.easeInOut.transform(_ambientController.value);
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: Transform.translate(
-                offset: Offset(0, offsetY),
-                child: Container(
-                  width: dotSize,
-                  height: dotSize,
-                  decoration: BoxDecoration(
-                    color: dotColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: dotColor.withValues(alpha: 0.35),
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
+        return Stack(
+          children: [
+            Positioned(
+              top: -110 + (t * 12),
+              right: -80,
+              child: _decorCircle(300, 0.06),
+            ),
+            Positioned(top: 150, left: -60, child: _decorRing(150, 0.07)),
+            Positioned(
+              bottom: -90 - (t * 10),
+              left: -70,
+              child: _decorCircle(240, 0.05),
+            ),
+            Positioned(
+              bottom: 70,
+              right: -40,
+              child: Transform.rotate(
+                angle: -0.5 + (t * 0.05),
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 200,
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
               ),
-            );
-          }),
+            ),
+            Positioned(
+              top: 90,
+              right: 44,
+              child: Transform.rotate(
+                angle: 2.4 - (t * 0.08),
+                child: Icon(
+                  Icons.eco_rounded,
+                  size: 46,
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildBlob(double size, Color color) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _BlobPainter(color: color),
+  Widget _decorCircle(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: alpha),
+      ),
     );
   }
 
-  Widget _buildFooter() {
+  Widget _decorRing(double size, double alpha) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: alpha),
+          width: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return FadeTransition(
+      opacity: _logoOpacity,
+      child: ScaleTransition(
+        scale: _logoScale,
+        child: SizedBox(
+          width: 148,
+          height: 148,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              // Cahaya lembut yang "bernapas"
+              OverflowBox(
+                maxWidth: 240,
+                maxHeight: 240,
+                child: AnimatedBuilder(
+                  animation: _ambientController,
+                  builder: (context, child) {
+                    final t = Curves.easeInOut.transform(
+                      _ambientController.value,
+                    );
+                    return Transform.scale(
+                      scale: 0.9 + (t * 0.1),
+                      child: Opacity(opacity: 0.75 + (t * 0.25), child: child),
+                    );
+                  },
+                  child: Container(
+                    width: 240,
+                    height: 240,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          primaryColor300.withValues(alpha: 0.34),
+                          primaryColor300.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Cincin kaca
+              Container(
+                width: 148,
+                height: 148,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.07),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+              ),
+              Container(
+                width: 122,
+                height: 122,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+
+              // Inti putih dengan daun
+              Container(
+                width: 94,
+                height: 94,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.white, primaryColor50],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 30,
+                      offset: const Offset(0, 14),
+                    ),
+                    ...AppShadows.glow(primaryColor300, strength: 0.3),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.eco_rounded,
+                  size: 48,
+                  color: primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrand() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 32),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
         children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: BoxDecoration(
-              color: primaryColor.withValues(alpha: 0.5),
-              shape: BoxShape.circle,
+          Text(
+            'VegBox',
+            style: AppText.display.copyWith(
+              color: Colors.white,
+              fontSize: 36,
+              letterSpacing: -1.2,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Sayur segar, langsung dari petani',
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(
+              color: Colors.white.withValues(alpha: 0.72),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Blob Canvas Painter
-// ─────────────────────────────────────────────────────────────────────────────
+  Widget _buildLoader() {
+    const double trackWidth = 88;
+    const double segmentWidth = 30;
 
-class _BlobPainter extends CustomPainter {
-  final Color color;
-  _BlobPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final path = Path();
-    final w = size.width;
-    final h = size.height;
-
-    // Organic blob shape using cubic beziers
-    path.moveTo(w * 0.5, 0);
-    path.cubicTo(w * 0.85, 0, w, h * 0.2, w, h * 0.5);
-    path.cubicTo(w, h * 0.8, w * 0.75, h, w * 0.5, h);
-    path.cubicTo(w * 0.2, h, 0, h * 0.78, 0, h * 0.5);
-    path.cubicTo(0, h * 0.22, w * 0.15, 0, w * 0.5, 0);
-    path.close();
-
-    canvas.drawPath(path, paint);
+    return Container(
+      width: trackWidth,
+      height: 3,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(radiusPill),
+      ),
+      child: AnimatedBuilder(
+        animation: _loaderController,
+        builder: (context, child) {
+          final t = Curves.easeInOutCubic.transform(_loaderController.value);
+          return Transform.translate(
+            offset: Offset(-segmentWidth + (trackWidth + segmentWidth) * t, 0),
+            child: child,
+          );
+        },
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            width: segmentWidth,
+            height: 3,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radiusPill),
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withValues(alpha: 0.0),
+                  Colors.white.withValues(alpha: 0.95),
+                  Colors.white.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
-  @override
-  bool shouldRepaint(_BlobPainter old) => old.color != color;
+  Widget _buildFooter() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 28),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.spa_rounded,
+            size: 14,
+            color: primaryColor200.withValues(alpha: 0.85),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'PANEN SEGAR SETIAP HARI',
+            style: AppText.overline.copyWith(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -1,6 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vegetables_app/ui/app_back_button.dart';
+import 'package:flutter/services.dart';
 import 'package:vegetables_app/ui/color.dart';
+import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
+import 'package:vegetables_app/ui/style.dart';
+import 'package:vegetables_app/ui/theme.dart';
 import 'package:vegetables_app/ui/typography.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -50,19 +54,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   void _saveProfile() {
     if (_formKey.currentState?.validate() ?? false) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Profil berhasil diperbarui!',
-            style: sMedium.copyWith(color: Colors.white),
-          ),
-          backgroundColor: primaryColor,
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
+      showAppSnackBar(
+        context,
+        'Profil berhasil diperbarui!',
+        icon: Icons.check_rounded,
+        aboveNavBar: true,
       );
 
       Navigator.pop(context, {
@@ -74,261 +70,251 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  String _initialsOf(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return 'VB';
+    final parts = trimmed.split(RegExp(r'\s+'));
+    if (parts.length > 1) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. TOP HEADER (Back Button + Title)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20.0,
-                vertical: 8.0,
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.darkStatusBar,
+      child: Scaffold(
+        backgroundColor: bgApp,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              const AppPageHeader(
+                title: 'Edit Profil',
+                subtitle: 'Perbarui informasi akunmu',
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const AppBackButton(),
-                  Text(
-                    'Edit Profil',
-                    style: sBold.copyWith(
-                      color: textNeutralPrimary,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 42), // Balance spacer
-                ],
-              ),
-            ),
 
-            const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildAvatarSection(),
+                        const SizedBox(height: 28),
 
-            // 2. SCROLLABLE FORM
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 12),
-
-                      // Avatar with edit badge
-                      Center(
-                        child: Stack(
+                        // Informasi pribadi
+                        _buildFormCard(
+                          overline: 'Informasi Pribadi',
                           children: [
-                            Container(
-                              width: 96,
-                              height: 96,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: pastelMint,
-                                border: Border.all(
-                                  color: primaryColor,
-                                  width: 2.5,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'DA',
-                                  style: lBold.copyWith(
-                                    color: primaryColor,
-                                    fontSize: 32,
-                                  ),
-                                ),
-                              ),
+                            AppTextField(
+                              label: 'Nama Lengkap',
+                              controller: _nameController,
+                              prefixIcon: Icons.person_outline_rounded,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.name],
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Nama tidak boleh kosong';
+                                }
+                                return null;
+                              },
                             ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: primaryColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.camera_alt_rounded,
-                                  size: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
+                            const SizedBox(height: 18),
+                            AppTextField(
+                              label: 'Alamat Email',
+                              controller: _emailController,
+                              prefixIcon: Icons.mail_outline_rounded,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.email],
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Email tidak boleh kosong';
+                                }
+                                if (!val.contains('@')) {
+                                  return 'Format email tidak valid';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 18),
+                            AppTextField(
+                              label: 'Nomor WhatsApp / HP',
+                              controller: _phoneController,
+                              prefixIcon: Icons.phone_outlined,
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [
+                                AutofillHints.telephoneNumber,
+                              ],
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Nomor telepon tidak boleh kosong';
+                                }
+                                return null;
+                              },
                             ),
                           ],
                         ),
-                      ),
 
-                      const SizedBox(height: 8),
-                      Text(
-                        'Ketuk ikon kamera untuk ganti foto',
-                        style: xsRegular.copyWith(
-                          color: const Color(0xFF94A3B8),
-                          fontSize: 11.5,
-                        ),
-                      ),
+                        const SizedBox(height: 16),
 
-                      const SizedBox(height: 28),
-
-                      // Input Nama Lengkap
-                      _buildInputField(
-                        label: 'Nama Lengkap',
-                        controller: _nameController,
-                        icon: Icons.person_outline_rounded,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Nama tidak boleh kosong';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Input Email
-                      _buildInputField(
-                        label: 'Alamat Email',
-                        controller: _emailController,
-                        icon: Icons.mail_outline_rounded,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Email tidak boleh kosong';
-                          }
-                          if (!val.contains('@')) {
-                            return 'Format email tidak valid';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Input Nomor Telepon
-                      _buildInputField(
-                        label: 'Nomor WhatsApp / HP',
-                        controller: _phoneController,
-                        icon: Icons.phone_outlined,
-                        keyboardType: TextInputType.phone,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Nomor telepon tidak boleh kosong';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Input Alamat
-                      _buildInputField(
-                        label: 'Alamat Pengiriman Utama',
-                        controller: _addressController,
-                        icon: Icons.location_on_outlined,
-                        maxLines: 2,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Alamat tidak boleh kosong';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 36),
-
-                      // Tombol Simpan Perubahan
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _saveProfile,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                        // Alamat
+                        _buildFormCard(
+                          overline: 'Pengiriman',
+                          children: [
+                            AppTextField(
+                              label: 'Alamat Pengiriman Utama',
+                              controller: _addressController,
+                              prefixIcon: Icons.location_on_outlined,
+                              maxLines: 2,
+                              keyboardType: TextInputType.streetAddress,
+                              autofillHints: const [
+                                AutofillHints.fullStreetAddress,
+                              ],
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) {
+                                  return 'Alamat tidak boleh kosong';
+                                }
+                                return null;
+                              },
                             ),
-                          ),
-                          child: Text(
-                            'Simpan Perubahan',
-                            style: sSemiBold.copyWith(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
+                          ],
                         ),
-                      ),
-
-                      const SizedBox(height: 32),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+
+              // Tombol simpan
+              Container(
+                padding: EdgeInsets.fromLTRB(20, 14, 20, 14 + bottomInset),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                  boxShadow: AppShadows.floating,
+                ),
+                child: AppButton(
+                  label: 'Simpan Perubahan',
+                  icon: Icons.check_rounded,
+                  onPressed: _saveProfile,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInputField({
-    required String label,
-    required TextEditingController controller,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    int maxLines = 1,
-    String? Function(String?)? validator,
-  }) {
+  Widget _buildAvatarSection() {
+    final photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: sSemiBold.copyWith(color: textNeutralPrimary, fontSize: 13),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 112,
+              height: 112,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: AppShadows.soft,
+              ),
+              child: ClipOval(
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _nameController,
+                  builder: (context, value, _) {
+                    final initials = Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [primaryColor50, primaryColor100],
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _initialsOf(value.text),
+                        style: AppText.display.copyWith(
+                          color: primaryColor700,
+                          fontSize: 34,
+                        ),
+                      ),
+                    );
+
+                    if (photoUrl == null || photoUrl.trim().isEmpty) {
+                      return initials;
+                    }
+                    return Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stack) => initials,
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 2,
+              right: 2,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: AppGradients.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: AppShadows.glow(primaryColor, strength: 0.3),
+                ),
+                child: const Icon(
+                  Icons.photo_camera_rounded,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          validator: validator,
-          style: sRegular.copyWith(color: textNeutralPrimary, fontSize: 13.5),
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
-            filled: true,
-            fillColor: const Color(0xFFF8FAF8),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: primaryColor, width: 1.5),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: errorColor),
-            ),
-          ),
+        const SizedBox(height: 14),
+        Text(
+          'Ketuk ikon kamera untuk ganti foto',
+          textAlign: TextAlign.center,
+          style: AppText.caption,
         ),
       ],
+    );
+  }
+
+  Widget _buildFormCard({
+    required String overline,
+    required List<Widget> children,
+  }) {
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(overline.toUpperCase(), style: AppText.overline),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
     );
   }
 }

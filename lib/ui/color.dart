@@ -376,3 +376,13 @@ const Color sunglow600 = Color(0xFFCB8503);
 const Color sunglow700 = Color(0xFFA15E07);
 const Color sunglow800 = Color(0xFF854A0E);
 const Color sunglow900 = Color(0xFF713C12);
+
+/// ============================================================================
+/// LUXE ALIASES (Redesign) — tetap memakai palet hijau yang sama,
+/// hanya memberi nama untuk peran baru di desain.
+/// ============================================================================
+const Color forestDeep = primaryColor900; // header gelap, nav bar
+const Color forest = primaryColor800;
+const Color hairline = Color(0xFFEDF1EE); // garis pemisah sangat halus
+const Color surfaceMuted = Color(0xFFF2F5F3); // isi field, placeholder gambar
+const Color inkSoft = Color(0xFF0F172A); // dasar warna bayangan
