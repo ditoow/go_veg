@@ -64,10 +64,9 @@ class AppGradients {
 
   /// Hijau utama untuk tombol.
   static const LinearGradient primary = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [primaryColor400, primaryColor, primaryColor700],
-    stops: [0.0, 0.45, 1.0],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [primaryColor, primaryColor700],
   );
 
   /// Lapisan gelap di atas foto agar teks terbaca.
