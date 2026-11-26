@@ -263,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'VegBox',
+              'GoVeg',
               style: AppText.h3.copyWith(
                 color: Colors.white,
                 fontSize: 18,
@@ -626,7 +626,7 @@ class _LoginScreenState extends State<LoginScreen> {
         // Snackbar tampil di MainNavigation, jadi posisikan di atas nav bar
         showAppSnackBar(
           context,
-          'Pendaftaran berhasil! Selamat datang di VegBox.',
+          'Pendaftaran berhasil! Selamat datang di GoVeg.',
           aboveNavBar: true,
         );
 
@@ -662,7 +662,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await userPref.setUserId(uid);
         await userPref.setUserEmail(email);
         await userPref.setUserName(
-          fullName.isNotEmpty ? fullName : 'Pengguna VegBox',
+          fullName.isNotEmpty ? fullName : 'Pengguna GoVeg',
         );
         await userPref.setLastLoginTime(DateTime.now());
 

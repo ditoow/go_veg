@@ -30,7 +30,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String _userName = 'Pengguna VegBox';
+  String _userName = 'Pengguna GoVeg';
   String _userEmail = '';
   String _userPhone = '+62 812-3456-7890';
   String _userAddress =
@@ -179,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text('Keluar dari akun?', style: AppText.h2),
                 const SizedBox(height: 8),
                 Text(
-                  'Apakah kamu yakin ingin keluar dari akun VegBox? '
+                  'Apakah kamu yakin ingin keluar dari akun GoVeg? '
                   'Kamu perlu login kembali untuk berbelanja.',
                   textAlign: TextAlign.center,
                   style: AppText.body.copyWith(fontSize: 13.5),
@@ -626,7 +626,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const Icon(Icons.eco_rounded, size: 18, color: primaryColor300),
         const SizedBox(height: 6),
         Text(
-          'VegBox · Versi $_appVersionLabel',
+          'GoVeg · Versi $_appVersionLabel',
           textAlign: TextAlign.center,
           style: AppText.caption,
         ),

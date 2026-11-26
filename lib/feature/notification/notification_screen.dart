@@ -68,7 +68,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       'id': '4',
       'title': 'Pesanan Selesai #VG-8910',
       'message':
-          'Terima kasih telah berbelanja di VegBox! Jangan lupa beri ulasan kesegaran sayuranmu.',
+          'Terima kasih telah berbelanja di GoVeg! Jangan lupa beri ulasan kesegaran sayuranmu.',
       'time': 'Kemarin, 09.00',
       'group': 'Kemarin',
       'category': 'Pesanan',

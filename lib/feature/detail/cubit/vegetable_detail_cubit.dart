@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vegetables_app/model/vegetable_model/local_vegetables.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_detail_model.dart';
 import 'package:vegetables_app/repository/vegetable_repository.dart';
 import 'package:vegetables_app/utility/resource/data_state.dart';
@@ -12,6 +13,12 @@ class VegetableDetailCubit extends Cubit<VegetableDetailState> {
       : super(VegetableDetailInitial());
 
   Future<void> getDetail(int id) async {
+    final localDetail = LocalVegetables.detailFor(id);
+    if (localDetail != null) {
+      emit(VegetableDetailLoaded(localDetail));
+      return;
+    }
+
     emit(VegetableDetailLoading());
     final result = await _vegetableRepository.getVegetableDetail(id: id);
 

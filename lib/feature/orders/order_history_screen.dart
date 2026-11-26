@@ -38,7 +38,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?q=80&w=600&auto=format&fit=crop',
       'totalItems': 3,
       'totalPrice': 38500,
-      'courierName': 'Pak Joko (Driver VegBox)',
+      'courierName': 'Pak Joko (Driver GoVeg)',
       'eta': '~15-20 menit lagi',
       'step': 3, // 1: Dipetik, 2: Dikemas, 3: Diantar
     },
@@ -829,7 +829,7 @@ class _TrackingSheet extends StatelessWidget {
     ),
     (
       title: 'Quality Check & Pengemasan',
-      subtitle: 'Dikemas higienis dengan ice pack di Hub VegBox',
+      subtitle: 'Dikemas higienis dengan ice pack di Hub GoVeg',
       time: '07:30 WIB',
       isDone: true,
       isCurrent: false,
@@ -987,7 +987,7 @@ class _TrackingSheet extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Kurir resmi VegBox Express',
+                            'Kurir resmi GoVeg Express',
                             style: AppText.caption.copyWith(
                               color: Colors.white.withValues(alpha: 0.65),
                             ),

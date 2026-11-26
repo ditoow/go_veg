@@ -11,7 +11,7 @@ plugins {
 
 android {
     namespace = "com.example.vegetables_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

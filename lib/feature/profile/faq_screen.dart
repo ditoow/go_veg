@@ -24,12 +24,12 @@ class _FaqScreenState extends State<FaqScreen> {
     {
       'q': 'Berapa lama estimasi pengiriman pesanan?',
       'a':
-          'Untuk pengiriman reguler hari yang sama (Same Day), pesanan diantar dalam waktu 15 - 45 menit tergantung jarak dari Hub VegBox terdekat ke lokasimu.',
+          'Untuk pengiriman reguler hari yang sama (Same Day), pesanan diantar dalam waktu 15 - 45 menit tergantung jarak dari Hub GoVeg terdekat ke lokasimu.',
     },
     {
       'q': 'Bagaimana jika sayuran yang diterima layu atau rusak?',
       'a':
-          'VegBox memberikan Garansi Kesegaran 100%. Cukup kirimkan foto sayuran yang kurang segar lewat menu Pesanan Saya, dan kami akan langsung mengganti produk baru atau mengembalikan dana secara instan.',
+          'GoVeg memberikan Garansi Kesegaran 100%. Cukup kirimkan foto sayuran yang kurang segar lewat menu Pesanan Saya, dan kami akan langsung mengganti produk baru atau mengembalikan dana secara instan.',
     },
     {
       'q': 'Apakah sayuran berlabel organik benar-benar bebas kimia?',
@@ -75,7 +75,7 @@ class _FaqScreenState extends State<FaqScreen> {
   void _contactCustomerCare() {
     showAppSnackBar(
       context,
-      'Menghubungkan ke WhatsApp Customer Care VegBox...',
+      'Menghubungkan ke WhatsApp Customer Care GoVeg...',
       icon: Icons.headset_mic_rounded,
     );
   }
@@ -242,7 +242,7 @@ class _FaqScreenState extends State<FaqScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Tim customer care VegBox siap membantu 24/7.',
+                            'Tim customer care GoVeg siap membantu 24/7.',
                             style: AppText.caption.copyWith(
                               color: Colors.white.withValues(alpha: 0.72),
                             ),

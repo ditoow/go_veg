@@ -6,6 +6,7 @@ import 'package:vegetables_app/feature/cart/cubit/cart_state.dart';
 import 'package:vegetables_app/feature/cart/model/cart_item_model.dart';
 import 'package:vegetables_app/feature/detail/detail_screen.dart';
 import 'package:vegetables_app/feature/main_navigation/main_navigation.dart';
+import 'package:vegetables_app/feature/payment/payment_screen.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -348,30 +349,15 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  void _handleCheckout(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierColor: bgBackdrop,
-      builder: (dialogCtx) => _ThemedDialog(
-        icon: Icons.check_rounded,
-        title: 'Pesanan Berhasil!',
-        message:
-            'Terima kasih! Pesanan sayuran segar kamu sedang disiapkan oleh petani dan kurir kami.',
-        actions: AppButton(
-          label: 'Lihat Pesanan',
-          trailingIcon: Icons.arrow_forward_rounded,
-          height: 52,
-          onPressed: () {
-            Navigator.pop(dialogCtx);
-            context.read<CartCubit>().clearCart();
-            MainNavigation.switchToTab(
-              context,
-              3,
-            ); // Pindah ke riwayat pesanan
-          },
-        ),
-      ),
+  Future<void> _handleCheckout(BuildContext context) async {
+    final paid = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const PaymentScreen()),
     );
+
+    if (paid == true && context.mounted) {
+      MainNavigation.switchToTab(context, 3); // Pindah ke riwayat pesanan
+    }
   }
 
   void _showClearDialog(BuildContext context) {

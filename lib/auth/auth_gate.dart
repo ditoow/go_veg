@@ -409,7 +409,7 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
       child: Column(
         children: [
           Text(
-            'VegBox',
+            'GoVeg',
             style: AppText.display.copyWith(
               color: Colors.white,
               fontSize: 36,

@@ -648,9 +648,20 @@ class VegImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = _VegPlaceholder(iconSize: iconSize);
+    final trimmedUrl = url.trim();
+    final isAsset = trimmedUrl.startsWith('assets/');
 
-    final image = url.trim().isEmpty
+    final image = trimmedUrl.isEmpty
         ? placeholder
+        : isAsset
+        ? Image.asset(
+            trimmedUrl,
+            fit: fit,
+            width: double.infinity,
+            height: double.infinity,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => placeholder,
+          )
         : LayoutBuilder(
             builder: (context, constraints) {
               // Decode gambar sesuai ukuran tampil (bukan resolusi asli)
@@ -662,7 +673,7 @@ class VegImage extends StatelessWidget {
                   ? ((constraints.maxWidth * dpr) / 360).ceil() * 360
                   : null;
               return Image.network(
-                url,
+                trimmedUrl,
                 fit: fit,
                 width: double.infinity,
                 height: double.infinity,
