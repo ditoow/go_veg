@@ -58,3 +58,7 @@ app.*.map.json
 # Tools
 .claude/settings.local.json
 graphify-out/
+
+# Local AI/MCP config & personal notes
+.mcp.json
+docs/be1/
