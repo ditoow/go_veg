@@ -1,0 +1,16 @@
+-- Skema resmi BE-1 sudah di-merge ke:
+--   supabase/migrations/20261128050047_schema.sql
+--   supabase/migrations/20261128050050_rls.sql
+--   supabase/migrations/20261128050256_create_order.sql
+--
+-- Ringkasan kolom yang dipakai oleh `src/store/supabaseStore.js`:
+-- 1. public.orders:
+--    id (text PK), user_id (uuid), gross_amount (integer),
+--    status ('PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'CANCELLED'),
+--    stock_applied (boolean), created_at, updated_at
+-- 2. public.payments (diisi BE-2 memakai SUPABASE_SERVICE_ROLE_KEY):
+--    order_id (text unique FK -> orders.id), snap_token, redirect_url,
+--    transaction_id, payment_type, transaction_status, fraud_status,
+--    gross_amount, raw_notification, created_at, updated_at
+-- 3. RPC BE-1 untuk status PAID:
+--    public.apply_paid_order(p_order_id text) -- set status='PAID', stock_applied=true, kurangi stok

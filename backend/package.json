@@ -1,0 +1,14 @@
+{
+  "name": "go-veg-be2-midtrans",
+  "version": "1.0.0",
+  "description": "BE-2 service for Midtrans payment initiation, webhook verification, and status sync (local-first & Supabase-ready)",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

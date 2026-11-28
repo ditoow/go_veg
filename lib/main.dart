@@ -1,27 +1,52 @@
-import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vegetables_app/auth/auth_gate.dart';
+import 'package:vegetables_app/config/constant.dart';
 import 'package:vegetables_app/config/service_locator.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/home/cubit/category_cubit.dart';
-import 'package:vegetables_app/feature/home/cubit/vegetable_cubit.dart';
 import 'package:vegetables_app/firebase_options.dart';
+import 'package:vegetables_app/providers/auth_provider.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
+import 'package:vegetables_app/providers/order_provider.dart';
+import 'package:vegetables_app/providers/payment_provider.dart';
+import 'package:vegetables_app/providers/product_provider.dart';
 import 'package:vegetables_app/ui/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  bool firebaseReady = false;
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    firebaseReady = true;
+  } catch (e) {
+    debugPrint('Firebase init skipped: $e');
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      );
+    } catch (e) {
+      debugPrint('Supabase init skipped: $e');
+    }
+  }
+
   await setUpLocator();
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
+
+  if (firebaseReady && !kIsWeb) {
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
 
   runApp(const MyApp());
 }
@@ -31,22 +56,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
+    return MultiProvider(
       providers: [
-        BlocProvider<VegetableCubit>(
+        ChangeNotifierProvider<AuthProvider>(
           create: (context) =>
-              serviceLocator.get<VegetableCubit>()..getVegetables(),
+              serviceLocator.get<AuthProvider>()..syncFromSession(),
         ),
-        BlocProvider<CategoryCubit>(
+        ChangeNotifierProvider<ProductProvider>(
+          create: (context) => serviceLocator.get<ProductProvider>()
+            ..getVegetables()
+            ..getCategories(),
+        ),
+        ChangeNotifierProvider<CartProvider>(
+          create: (context) => serviceLocator.get<CartProvider>()..loadCart(),
+        ),
+        ChangeNotifierProvider<FavoriteProvider>(
           create: (context) =>
-              serviceLocator.get<CategoryCubit>()..getCategories(),
+              serviceLocator.get<FavoriteProvider>()..loadFavorites(),
         ),
-        BlocProvider<CartCubit>(
-          create: (context) => serviceLocator.get<CartCubit>()..loadCart(),
+        ChangeNotifierProvider<OrderProvider>(
+          create: (context) => serviceLocator.get<OrderProvider>(),
         ),
-        BlocProvider<FavoriteCubit>(
-          create: (context) =>
-              serviceLocator.get<FavoriteCubit>()..loadFavorites(),
+        ChangeNotifierProvider<PaymentProvider>(
+          create: (context) => serviceLocator.get<PaymentProvider>(),
         ),
       ],
       child: MaterialApp(

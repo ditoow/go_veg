@@ -5,11 +5,13 @@ import 'package:get_it/get_it.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vegetables_app/config/user_preference.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
-import 'package:vegetables_app/feature/detail/cubit/vegetable_detail_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/home/cubit/category_cubit.dart';
-import 'package:vegetables_app/feature/home/cubit/vegetable_cubit.dart';
+import 'package:vegetables_app/providers/auth_provider.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
+import 'package:vegetables_app/providers/order_provider.dart';
+import 'package:vegetables_app/providers/payment_provider.dart';
+import 'package:vegetables_app/providers/product_detail_provider.dart';
+import 'package:vegetables_app/providers/product_provider.dart';
 
 import '../data/api/api_service.dart';
 import '../firebase/firebase_analytics_helper.dart';
@@ -67,19 +69,26 @@ Future<void> setUpLocator() async {
   serviceLocator.registerLazySingleton<FirebaseGoogleAuth>(
     () => FirebaseGoogleAuth(),
   );
-  serviceLocator.registerFactory<VegetableCubit>(
-    () => VegetableCubit(serviceLocator.get<VegetableRepository>()),
+  serviceLocator.registerLazySingleton<AuthProvider>(
+    () => AuthProvider(serviceLocator.get<UserPreference>()),
   );
-  serviceLocator.registerFactory<CategoryCubit>(
-    () => CategoryCubit(serviceLocator.get<VegetableRepository>()),
+  serviceLocator.registerFactory<ProductProvider>(
+    () => ProductProvider(serviceLocator.get<VegetableRepository>()),
   );
-  serviceLocator.registerFactory<VegetableDetailCubit>(
-    () => VegetableDetailCubit(serviceLocator.get<VegetableRepository>()),
+  serviceLocator.registerFactory<ProductDetailProvider>(
+    () => ProductDetailProvider(serviceLocator.get<VegetableRepository>()),
   );
-  serviceLocator.registerLazySingleton<CartCubit>(
-    () => CartCubit(serviceLocator.get<SharedPreferences>()),
+  serviceLocator.registerLazySingleton<CartProvider>(
+    () => CartProvider(serviceLocator.get<SharedPreferences>()),
   );
-  serviceLocator.registerLazySingleton<FavoriteCubit>(
-    () => FavoriteCubit(serviceLocator.get<SharedPreferences>()),
+  serviceLocator.registerLazySingleton<FavoriteProvider>(
+    () => FavoriteProvider(serviceLocator.get<SharedPreferences>()),
+  );
+  serviceLocator.registerLazySingleton<OrderProvider>(() => OrderProvider());
+  serviceLocator.registerFactory<PaymentProvider>(
+    () => PaymentProvider(
+      serviceLocator.get<Dio>(),
+      backendBaseUrl: be2BaseUrl,
+    ),
   );
 }

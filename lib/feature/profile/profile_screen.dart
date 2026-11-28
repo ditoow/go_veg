@@ -1,15 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
 import 'package:vegetables_app/config/constant.dart';
 import 'package:vegetables_app/config/service_locator.dart';
 import 'package:vegetables_app/config/user_preference.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_state.dart';
 import 'package:vegetables_app/feature/favorite/favorite_screen.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
 import 'package:vegetables_app/feature/login/login_screen.dart';
 import 'package:vegetables_app/feature/main_navigation/main_navigation.dart';
 import 'package:vegetables_app/feature/profile/edit_profile_screen.dart';
@@ -47,7 +47,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _loadUserData() {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        Firebase.apps.isNotEmpty ? FirebaseAuth.instance.currentUser : null;
     final userPref = serviceLocator.get<UserPreference>();
 
     if (user != null) {
@@ -197,7 +198,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       await GoogleSignIn().signOut();
                     } catch (_) {}
                     try {
-                      await FirebaseAuth.instance.signOut();
+                      if (Firebase.apps.isNotEmpty) {
+                        await FirebaseAuth.instance.signOut();
+                      }
                     } catch (_) {}
                     try {
                       await serviceLocator.get<UserPreference>().clearData();
@@ -545,14 +548,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _verticalHairline(),
           Expanded(
-            child: BlocBuilder<FavoriteCubit, FavoriteState>(
-              builder: (context, favState) {
+            child: Consumer<FavoriteProvider>(
+              builder: (context, favProvider, _) {
                 return _QuickAction(
                   icon: Icons.favorite_rounded,
                   label: 'Favorit',
                   color: errorColor,
                   background: pastelRed,
-                  badgeCount: favState.favorites.length,
+                  badgeCount: favProvider.favorites.length,
                   onTap: _openFavorites,
                 );
               },

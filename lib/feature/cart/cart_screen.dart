@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_state.dart';
+import 'package:provider/provider.dart';
 import 'package:vegetables_app/feature/cart/model/cart_item_model.dart';
 import 'package:vegetables_app/feature/detail/detail_screen.dart';
 import 'package:vegetables_app/feature/main_navigation/main_navigation.dart';
 import 'package:vegetables_app/feature/payment/payment_screen.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -30,9 +29,9 @@ class CartScreen extends StatelessWidget {
         backgroundColor: bgApp,
         body: SafeArea(
           bottom: false,
-          child: BlocBuilder<CartCubit, CartState>(
-            builder: (context, state) {
-              final isEmpty = state.items.isEmpty;
+          child: Consumer<CartProvider>(
+            builder: (context, cart, _) {
+              final isEmpty = cart.items.isEmpty;
 
               return Column(
                 children: [
@@ -42,7 +41,7 @@ class CartScreen extends StatelessWidget {
                     title: 'Keranjang',
                     subtitle: isEmpty
                         ? null
-                        : '${state.totalItems} item · ${state.items.length} produk',
+                        : '${cart.totalItems} item · ${cart.items.length} produk',
                     trailing: isEmpty
                         ? null
                         : _ClearCartButton(
@@ -53,7 +52,7 @@ class CartScreen extends StatelessWidget {
                   Expanded(
                     child: isEmpty
                         ? _buildEmptyCart(context)
-                        : _buildCartContent(context, state),
+                        : _buildCartContent(context, cart),
                   ),
                 ],
               );
@@ -82,7 +81,7 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCartContent(BuildContext context, CartState state) {
+  Widget _buildCartContent(BuildContext context, CartProvider cart) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Stack(
@@ -99,7 +98,7 @@ class CartScreen extends StatelessWidget {
           ),
           children: [
             // Daftar item keranjang
-            for (final item in state.items)
+            for (final item in cart.items)
               Padding(
                 key: ValueKey(item.vegetable.id),
                 padding: const EdgeInsets.only(bottom: 14),
@@ -109,7 +108,7 @@ class CartScreen extends StatelessWidget {
             const SizedBox(height: 10),
 
             // Ringkasan pembayaran
-            _buildSummaryCard(state),
+            _buildSummaryCard(cart),
           ],
         ),
 
@@ -142,7 +141,7 @@ class CartScreen extends StatelessWidget {
           left: 20,
           right: 20,
           bottom: _checkoutBarBottom + bottomInset,
-          child: _buildCheckoutBar(context, state),
+          child: _buildCheckoutBar(context, cart),
         ),
       ],
     );
@@ -150,7 +149,7 @@ class CartScreen extends StatelessWidget {
 
   Widget _buildCartCard(BuildContext context, CartItemModel item) {
     final veg = item.vegetable;
-    final cart = context.read<CartCubit>();
+    final cart = context.read<CartProvider>();
 
     return AppCard(
       padding: const EdgeInsets.all(12),
@@ -258,7 +257,7 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSummaryCard(CartState state) {
+  Widget _buildSummaryCard(CartProvider cart) {
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -267,8 +266,8 @@ class CartScreen extends StatelessWidget {
           Text('Ringkasan Belanja', style: AppText.h3),
           const SizedBox(height: 16),
           _buildSummaryRow(
-            'Subtotal (${state.totalItems} item)',
-            Text(formatRupiah(state.totalPrice), style: AppText.bodyStrong),
+            'Subtotal (${cart.totalItems} item)',
+            Text(formatRupiah(cart.totalPrice), style: AppText.bodyStrong),
           ),
           const SizedBox(height: 10),
           _buildSummaryRow(
@@ -288,7 +287,7 @@ class CartScreen extends StatelessWidget {
                 child: Text('Total Pembayaran', style: AppText.title),
               ),
               Text(
-                formatRupiah(state.totalPrice),
+                formatRupiah(cart.totalPrice),
                 style: AppText.price.copyWith(fontSize: 18),
               ),
             ],
@@ -310,7 +309,7 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCheckoutBar(BuildContext context, CartState state) {
+  Widget _buildCheckoutBar(BuildContext context, CartProvider cart) {
     return Container(
       height: _checkoutBarHeight,
       padding: const EdgeInsets.fromLTRB(24, 10, 10, 10),
@@ -328,7 +327,7 @@ class CartScreen extends StatelessWidget {
               children: [
                 Text('Total tagihan', style: AppText.caption),
                 Text(
-                  formatRupiah(state.totalPrice),
+                  formatRupiah(cart.totalPrice),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.price.copyWith(fontSize: 18),
@@ -388,7 +387,7 @@ class CartScreen extends StatelessWidget {
                 height: 50,
                 onPressed: () {
                   Navigator.pop(dialogCtx);
-                  context.read<CartCubit>().clearCart();
+                  context.read<CartProvider>().clearCart();
                   showAppSnackBar(
                     context,
                     'Keranjang berhasil dikosongkan',

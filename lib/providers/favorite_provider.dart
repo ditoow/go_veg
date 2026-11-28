@@ -1,36 +1,37 @@
 import 'dart:convert';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_state.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
 
-class FavoriteCubit extends Cubit<FavoriteState> {
+class FavoriteProvider extends ChangeNotifier {
   static const String _storageKey = 'favorite_vegetables';
   final SharedPreferences _prefs;
 
-  FavoriteCubit(this._prefs) : super(const FavoriteState());
+  FavoriteProvider(this._prefs);
+
+  List<VegetableModel> _favorites = const [];
+
+  List<VegetableModel> get favorites => List.unmodifiable(_favorites);
+
+  bool isFavorite(int id) => _favorites.any((v) => v.id == id);
 
   void loadFavorites() {
     try {
       final raw = _prefs.getString(_storageKey);
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(raw);
-        final list = decoded
+        _favorites = decoded
             .map((e) => VegetableModel.fromJson(e as Map<String, dynamic>))
             .toList();
-        emit(FavoriteState(favorites: list));
+        notifyListeners();
       }
     } catch (_) {
       // Graceful fallback
     }
   }
 
-  bool isFavorite(int id) {
-    return state.isFavorite(id);
-  }
-
   void toggleFavorite(VegetableModel item) {
-    final current = List<VegetableModel>.from(state.favorites);
+    final current = List<VegetableModel>.from(_favorites);
     final exists = current.any((v) => v.id == item.id);
 
     if (exists) {
@@ -39,7 +40,8 @@ class FavoriteCubit extends Cubit<FavoriteState> {
       current.add(item);
     }
 
-    emit(FavoriteState(favorites: current));
+    _favorites = current;
+    notifyListeners();
     _saveToStorage(current);
   }
 

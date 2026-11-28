@@ -1,17 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:vegetables_app/config/constant.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
 import 'package:vegetables_app/feature/detail/detail_screen.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_state.dart';
 import 'package:vegetables_app/feature/favorite/favorite_screen.dart';
-import 'package:vegetables_app/feature/home/cubit/category_cubit.dart';
-import 'package:vegetables_app/feature/home/cubit/vegetable_cubit.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
+import 'package:vegetables_app/providers/product_provider.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -51,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final cat = category ?? _selectedCategoryName;
     final query = (search ?? _searchController.text).trim();
 
-    context.read<VegetableCubit>().getVegetables(
+    context.read<ProductProvider>().getVegetables(
       kategori: (cat == 'Semua') ? null : cat,
       cari: query.isNotEmpty ? query : null,
     );
@@ -66,7 +64,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String get _firstName {
-    final name = FirebaseAuth.instance.currentUser?.displayName?.trim() ?? '';
+    final name = Firebase.apps.isNotEmpty
+        ? (FirebaseAuth.instance.currentUser?.displayName?.trim() ?? '')
+        : '';
     if (name.isEmpty) return '';
     return name.split(RegExp(r'\s+')).first;
   }
@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: primaryColor,
                 backgroundColor: Colors.white,
                 onRefresh: () async {
-                  context.read<CategoryCubit>().getCategories();
+                  context.read<ProductProvider>().getCategories();
                   _fetchVegetables();
                 },
                 child: CustomScrollView(
@@ -282,12 +282,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        BlocBuilder<FavoriteCubit, FavoriteState>(
-          builder: (context, favState) {
+        Consumer<FavoriteProvider>(
+          builder: (context, favProvider, _) {
             return AppCircleButton(
               icon: Icons.favorite_border_rounded,
               style: CircleButtonStyle.glass,
-              badgeCount: favState.favorites.length,
+              badgeCount: favProvider.favorites.length,
               onTap: () {
                 Navigator.push(
                   context,
@@ -414,14 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 14),
         SizedBox(
           height: 52,
-          child: BlocBuilder<CategoryCubit, CategoryState>(
-            builder: (context, state) {
-              List<String> categories = vegetableCategories;
-              if (state is CategoryLoaded) {
-                categories = state.categories;
-              } else if (state is CategoryError) {
-                categories = state.fallbackCategories;
-              }
+          child: Consumer<ProductProvider>(
+            builder: (context, productProvider, _) {
+              final categories = productProvider.categories;
 
               if (_selectedCategoryIndex >= categories.length) {
                 _selectedCategoryIndex = 0;
@@ -511,9 +506,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // 3. PRODUK
   // ---------------------------------------------------------------------------
   Widget _buildProductSectionHeader() {
-    return BlocBuilder<VegetableCubit, VegetableState>(
-      builder: (context, state) {
-        final count = state is VegetableLoaded ? state.vegetables.length : null;
+    return Consumer<ProductProvider>(
+      builder: (context, productProvider, _) {
+        final count = productProvider.hasLoadedOnce &&
+                productProvider.errorMessage == null
+            ? productProvider.vegetables.length
+            : null;
         return SectionHeader(
           overline: 'Pilihan hari ini',
           title: _selectedCategoryName == 'Semua'
@@ -536,16 +534,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildProductGrid() {
-    return BlocBuilder<VegetableCubit, VegetableState>(
-      builder: (context, state) {
-        if (state is VegetableLoading) {
+    return Consumer<ProductProvider>(
+      builder: (context, productProvider, _) {
+        if (productProvider.isLoading) {
           return _buildShimmerLoading();
-        } else if (state is VegetableError) {
+        } else if (productProvider.errorMessage != null) {
           return SliverToBoxAdapter(
             child: EmptyStateView(
               icon: Icons.wifi_off_rounded,
               title: 'Gagal memuat sayuran',
-              message: state.message,
+              message: productProvider.errorMessage!,
               tone: errorColor,
               toneBackground: red50,
               actionLabel: 'Coba Lagi',
@@ -553,8 +551,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onAction: () => _fetchVegetables(),
             ),
           );
-        } else if (state is VegetableLoaded) {
-          final items = state.vegetables;
+        } else if (productProvider.hasLoadedOnce) {
+          final items = productProvider.vegetables;
           if (items.isEmpty) {
             return const SliverToBoxAdapter(
               child: EmptyStateView(
@@ -715,16 +713,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: BlocBuilder<FavoriteCubit, FavoriteState>(
-                      builder: (context, favState) {
-                        final isFav = context.read<FavoriteCubit>().isFavorite(
-                          item.id,
-                        );
+                    child: Consumer<FavoriteProvider>(
+                      builder: (context, favProvider, _) {
+                        final isFav = favProvider.isFavorite(item.id);
                         return Pressable(
                           pressedScale: 0.85,
-                          onTap: () => context
-                              .read<FavoriteCubit>()
-                              .toggleFavorite(item),
+                          onTap: () => favProvider.toggleFavorite(item),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: 34,
@@ -786,7 +780,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Pressable(
                         pressedScale: 0.88,
                         onTap: () {
-                          context.read<CartCubit>().addItem(item, quantity: 1);
+                          context.read<CartProvider>().addItem(item, quantity: 1);
                           showAppSnackBar(
                             context,
                             '${item.nama} masuk keranjang',

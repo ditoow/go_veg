@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:vegetables_app/config/service_locator.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
-import 'package:vegetables_app/feature/detail/cubit/vegetable_detail_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_state.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_detail_model.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
+import 'package:vegetables_app/providers/product_detail_provider.dart';
 import 'package:vegetables_app/ui/app_back_button.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
@@ -24,9 +23,9 @@ class DetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<VegetableDetailCubit>(
+    return ChangeNotifierProvider<ProductDetailProvider>(
       create: (context) =>
-          serviceLocator.get<VegetableDetailCubit>()..getDetail(vegetable.id),
+          serviceLocator.get<ProductDetailProvider>()..getDetail(vegetable.id),
       child: _DetailView(vegetable: vegetable),
     );
   }
@@ -259,19 +258,15 @@ class _DetailViewState extends State<_DetailView> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                BlocBuilder<FavoriteCubit, FavoriteState>(
-                  builder: (context, favState) {
-                    final isFav = context.read<FavoriteCubit>().isFavorite(
-                      widget.vegetable.id,
-                    );
+                Consumer<FavoriteProvider>(
+                  builder: (context, favProvider, _) {
+                    final isFav = favProvider.isFavorite(widget.vegetable.id);
                     return AppCircleButton(
                       icon: isFav
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
                       iconColor: isFav ? errorColor : textNeutralPrimary,
-                      onTap: () => context
-                          .read<FavoriteCubit>()
-                          .toggleFavorite(widget.vegetable),
+                      onTap: () => favProvider.toggleFavorite(widget.vegetable),
                     );
                   },
                 ),
@@ -308,14 +303,10 @@ class _DetailViewState extends State<_DetailView> {
           ),
         ],
       ),
-      child: BlocBuilder<VegetableDetailCubit, VegetableDetailState>(
-        builder: (context, state) {
-          final isLoading =
-              state is VegetableDetailLoading ||
-              state is VegetableDetailInitial;
-          final VegetableDetailModel? detail = state is VegetableDetailLoaded
-              ? state.detail
-              : null;
+      child: Consumer<ProductDetailProvider>(
+        builder: (context, detailProvider, _) {
+          final isLoading = detailProvider.isLoading;
+          final VegetableDetailModel? detail = detailProvider.detail;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,8 +335,8 @@ class _DetailViewState extends State<_DetailView> {
                   : _buildSpecGrid(detail?.nutrisi),
               const SizedBox(height: 30),
 
-              if (state is VegetableDetailError) ...[
-                _buildErrorNotice(state.message),
+              if (detailProvider.errorMessage != null) ...[
+                _buildErrorNotice(detailProvider.errorMessage!),
                 const SizedBox(height: 16),
               ],
 
@@ -555,7 +546,7 @@ class _DetailViewState extends State<_DetailView> {
             ),
           ),
           Pressable(
-            onTap: () => context.read<VegetableDetailCubit>().getDetail(
+            onTap: () => context.read<ProductDetailProvider>().getDetail(
               widget.vegetable.id,
             ),
             child: Padding(
@@ -789,7 +780,7 @@ class _DetailViewState extends State<_DetailView> {
               icon: Icons.add_shopping_cart_rounded,
               height: 52,
               onPressed: () {
-                context.read<CartCubit>().addItem(item, quantity: _quantity);
+                context.read<CartProvider>().addItem(item, quantity: _quantity);
                 showAppSnackBar(
                   context,
                   '$_quantity × ${item.nama} (${formatRupiah(subtotal)}) masuk keranjang',

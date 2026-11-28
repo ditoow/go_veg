@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
 import 'package:vegetables_app/feature/cart/cart_screen.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_state.dart';
 import 'package:vegetables_app/feature/home/home_screen.dart';
 import 'package:vegetables_app/feature/notification/notification_screen.dart';
 import 'package:vegetables_app/feature/orders/order_history_screen.dart';
 import 'package:vegetables_app/feature/profile/profile_screen.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -136,10 +135,10 @@ class _MainNavigationState extends State<MainNavigation> {
         children: [
           for (int i = 0; i < _entries.length; i++)
             if (i == 2)
-              BlocBuilder<CartCubit, CartState>(
-                buildWhen: (a, b) => a.totalItems != b.totalItems,
-                builder: (context, state) =>
-                    _buildNavItem(i, badge: state.totalItems),
+              Selector<CartProvider, int>(
+                selector: (_, cart) => cart.totalItems,
+                builder: (context, totalItems, _) =>
+                    _buildNavItem(i, badge: totalItems),
               )
             else
               _buildNavItem(i),

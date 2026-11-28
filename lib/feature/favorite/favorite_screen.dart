@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
+import 'package:provider/provider.dart';
 import 'package:vegetables_app/feature/detail/detail_screen.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_cubit.dart';
-import 'package:vegetables_app/feature/favorite/cubit/favorite_state.dart';
 import 'package:vegetables_app/model/vegetable_model/vegetable_model.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/favorite_provider.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -34,9 +33,9 @@ class FavoriteScreen extends StatelessWidget {
         backgroundColor: bgApp,
         body: SafeArea(
           bottom: false,
-          child: BlocBuilder<FavoriteCubit, FavoriteState>(
-            builder: (context, state) {
-              final items = state.favorites;
+          child: Consumer<FavoriteProvider>(
+            builder: (context, favProvider, _) {
+              final items = favProvider.favorites;
 
               return Column(
                 children: [
@@ -154,7 +153,7 @@ class FavoriteScreen extends StatelessWidget {
                         Pressable(
                           pressedScale: 0.85,
                           onTap: () {
-                            context.read<FavoriteCubit>().toggleFavorite(item);
+                            context.read<FavoriteProvider>().toggleFavorite(item);
                             showAppSnackBar(
                               context,
                               '${item.nama} dihapus dari favorit',
@@ -220,7 +219,7 @@ class FavoriteScreen extends StatelessWidget {
                       Pressable(
                         pressedScale: 0.88,
                         onTap: () {
-                          context.read<CartCubit>().addItem(item, quantity: 1);
+                          context.read<CartProvider>().addItem(item, quantity: 1);
                           showAppSnackBar(
                             context,
                             '${item.nama} masuk keranjang',

@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vegetables_app/ui/color.dart';
@@ -218,7 +219,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildAvatarSection() {
-    final photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
+    final photoUrl = Firebase.apps.isNotEmpty
+        ? FirebaseAuth.instance.currentUser?.photoURL
+        : null;
 
     return Column(
       children: [

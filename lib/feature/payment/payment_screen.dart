@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:vegetables_app/feature/cart/cubit/cart_cubit.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:vegetables_app/providers/auth_provider.dart';
+import 'package:vegetables_app/providers/cart_provider.dart';
+import 'package:vegetables_app/providers/payment_provider.dart';
 import 'package:vegetables_app/ui/color.dart';
 import 'package:vegetables_app/ui/dimension.dart';
 import 'package:vegetables_app/ui/shared_widget/app_widgets.dart';
@@ -60,8 +63,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     ),
   ];
 
-  static const String _merchantName = 'GoVeg Demo Store';
-  static const String _nmid = 'ID1024667788990';
   static const List<String> _banks = ['BCA', 'BNI', 'Mandiri', 'BRI'];
   static const List<String> _wallets = ['GoPay', 'OVO', 'DANA', 'ShopeePay'];
   static const Map<String, String> _virtualAccounts = {
@@ -83,13 +84,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   int _totalItems = 0;
   int _totalPrice = 0;
+  String? _activeOrderId;
+  String? _activeRedirectUrl;
 
   @override
   void initState() {
     super.initState();
-    final cart = context.read<CartCubit>().state;
+    final cart = context.read<CartProvider>();
     _totalItems = cart.totalItems;
     _totalPrice = cart.totalPrice;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<PaymentProvider>().reset();
+    });
   }
 
   String get _paymentTitle {
@@ -108,7 +114,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String get _paymentSubtitle {
     switch (_selectedIndex) {
       case 0:
-        return 'Scan kode QRIS di bawah ini';
+        return 'Selesaikan pembayaran QRIS di halaman Midtrans';
       case 1:
         return 'Gunakan nomor Virtual Account berikut';
       case 2:
@@ -121,6 +127,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _handlePay() async {
     FocusScope.of(context).unfocus();
 
+    if (_selectedIndex != 3) {
+      final ready = await _prepareMidtransPayment();
+      if (!ready || !mounted) return;
+      await _launchMidtransRedirect();
+      if (!mounted) return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -129,6 +142,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         title: _paymentTitle,
         subtitle: _paymentSubtitle,
         content: _buildPaymentContent(),
+        expiresAt: _selectedIndex == 3
+            ? null
+            : context.read<PaymentProvider>().expiresAt,
         confirmLabel: _selectedIndex == 3
             ? 'Konfirmasi Pesanan'
             : 'Saya Sudah Bayar',
@@ -140,20 +156,137 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
+  Future<bool> _prepareMidtransPayment() async {
+    if (_activeOrderId != null && _activeRedirectUrl != null) {
+      return true;
+    }
+    if (_totalPrice <= 0) {
+      showAppSnackBar(
+        context,
+        'Keranjang masih kosong.',
+        type: AppSnackType.info,
+        icon: Icons.shopping_basket_outlined,
+      );
+      return false;
+    }
+
+    setState(() => _isProcessing = true);
+
+    final cart = context.read<CartProvider>();
+    final auth = context.read<AuthProvider>();
+    final payment = context.read<PaymentProvider>();
+
+    final itemDetails = cart.items.map((item) {
+      final rawName = item.vegetable.nama;
+      final safeName = rawName.length > 50 ? rawName.substring(0, 50) : rawName;
+      return {
+        'id': item.vegetable.id.toString(),
+        'price': item.vegetable.harga,
+        'quantity': item.quantity,
+        'name': safeName,
+      };
+    }).toList();
+
+    final customerDetails = <String, dynamic>{
+      if (auth.displayName != null && auth.displayName!.isNotEmpty)
+        'first_name': auth.displayName,
+      if (auth.email != null && auth.email!.isNotEmpty) 'email': auth.email,
+    };
+
+    final ok = await payment.initiateCheckoutPayment(
+      orderId: _activeOrderId,
+      grossAmount: _totalPrice,
+      userId: auth.userId,
+      customerDetails: customerDetails.isEmpty ? null : customerDetails,
+      itemDetails: itemDetails.isEmpty ? null : itemDetails,
+    );
+
+    if (!mounted) return false;
+    setState(() => _isProcessing = false);
+
+    if (!ok) {
+      showAppSnackBar(
+        context,
+        payment.errorMessage ?? 'Gagal terhubung ke server pembayaran BE-2.',
+        type: AppSnackType.error,
+        icon: Icons.wifi_off_rounded,
+      );
+      return false;
+    }
+
+    _activeOrderId = payment.orderId;
+    _activeRedirectUrl = payment.redirectUrl;
+    return true;
+  }
+
+  Future<void> _launchMidtransRedirect() async {
+    final url = _activeRedirectUrl;
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   Future<void> _processPayment() async {
     setState(() => _isProcessing = true);
 
-    await Future.delayed(const Duration(milliseconds: 1500));
+    if (_selectedIndex == 3) {
+      await Future.delayed(const Duration(milliseconds: 1000));
+      if (!mounted) return;
+      context.read<CartProvider>().clearCart();
+      setState(() => _isProcessing = false);
+      await _showSuccessDialog();
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      return;
+    }
+
+    final orderId = _activeOrderId;
+    if (orderId == null) {
+      setState(() => _isProcessing = false);
+      return;
+    }
+
+    final payment = context.read<PaymentProvider>();
+    final status = await payment.checkPaymentStatus(orderId, sync: true);
 
     if (!mounted) return;
-
-    context.read<CartCubit>().clearCart();
     setState(() => _isProcessing = false);
 
-    await _showSuccessDialog();
+    if (status == null) {
+      showAppSnackBar(
+        context,
+        payment.errorMessage ?? 'Gagal memeriksa status pembayaran.',
+        type: AppSnackType.error,
+        icon: Icons.wifi_off_rounded,
+      );
+      return;
+    }
 
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    if (status == 'PAID') {
+      _activeOrderId = null;
+      _activeRedirectUrl = null;
+      context.read<CartProvider>().clearCart();
+      await _showSuccessDialog();
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } else if (status == 'PENDING') {
+      showAppSnackBar(
+        context,
+        'Pembayaran masih PENDING. Selesaikan di halaman Midtrans lalu tekan "Bayar Sekarang" untuk cek ulang.',
+        type: AppSnackType.info,
+        icon: Icons.hourglass_bottom_rounded,
+      );
+    } else {
+      _activeOrderId = null;
+      _activeRedirectUrl = null;
+      showAppSnackBar(
+        context,
+        'Pembayaran berstatus $status. Silakan ulangi transaksi.',
+        type: AppSnackType.error,
+        icon: Icons.error_outline_rounded,
+      );
+    }
   }
 
   Future<void> _showSuccessDialog() {
@@ -338,7 +471,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Pressable(
             onTap: _isProcessing
                 ? null
-                : () => setState(() => _selectedIndex = index),
+                : () => setState(() {
+                    if (_selectedIndex != index) {
+                      _selectedIndex = index;
+                      _activeOrderId = null;
+                      _activeRedirectUrl = null;
+                    }
+                  }),
             pressedScale: 0.985,
             child: Row(
               children: [
@@ -398,14 +537,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 label: 'Pilih bank',
                 value: _selectedBank,
                 items: _banks,
-                onSelected: (value) => setState(() => _selectedBank = value),
+                onSelected: (value) => setState(() {
+                  _selectedBank = value;
+                  _activeOrderId = null;
+                  _activeRedirectUrl = null;
+                }),
               )
             else
               _buildDropdownField(
                 label: 'Pilih e-wallet',
                 value: _selectedWallet,
                 items: _wallets,
-                onSelected: (value) => setState(() => _selectedWallet = value),
+                onSelected: (value) => setState(() {
+                  _selectedWallet = value;
+                  _activeOrderId = null;
+                  _activeRedirectUrl = null;
+                }),
               ),
           ],
         ],
@@ -500,32 +647,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
           icon: Icons.qr_code_2_rounded,
           tint: primaryColor50,
           title: 'QRIS',
-          subtitle: _merchantName,
+          subtitle: 'Pembayaran via Midtrans',
         ),
         const SizedBox(height: 16),
-        Center(
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(radiusMd),
-              border: Border.all(color: hairline),
-            ),
-            child: SizedBox(
-              width: 176,
-              height: 176,
-              child: CustomPaint(painter: const _DummyQrPainter()),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildDetailRow('NMID', _nmid),
-        const SizedBox(height: 8),
         _buildDetailRow('Nominal', formatRupiah(_totalPrice)),
         const SizedBox(height: 12),
         Text(
-          'Data QRIS dummy untuk pengujian pembayaran.',
-          style: AppText.caption.copyWith(fontSize: 11),
+          'Kode QRIS ditampilkan langsung di halaman pembayaran Midtrans. Setelah selesai membayar, tekan tombol di bawah untuk verifikasi.',
+          style: AppText.body.copyWith(fontSize: 13),
         ),
       ],
     );
@@ -705,6 +834,7 @@ class _PaymentSheet extends StatefulWidget {
   final String title;
   final String subtitle;
   final Widget content;
+  final DateTime? expiresAt;
   final String confirmLabel;
   final VoidCallback onConfirm;
 
@@ -712,6 +842,7 @@ class _PaymentSheet extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.content,
+    this.expiresAt,
     required this.confirmLabel,
     required this.onConfirm,
   });
@@ -724,25 +855,34 @@ class _PaymentSheetState extends State<_PaymentSheet> {
   static const int _timeoutSeconds = 10 * 60;
 
   Timer? _timer;
-  int _remainingSeconds = _timeoutSeconds;
+  late int _remainingSeconds;
 
   bool get _expired => _remainingSeconds <= 0;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_remainingSeconds <= 1) {
-        timer.cancel();
-        setState(() => _remainingSeconds = 0);
-      } else {
-        setState(() => _remainingSeconds -= 1);
-      }
-    });
+    if (widget.expiresAt != null) {
+      final diff = widget.expiresAt!.difference(DateTime.now()).inSeconds;
+      _remainingSeconds = diff.clamp(0, _timeoutSeconds);
+    } else {
+      _remainingSeconds = _timeoutSeconds;
+    }
+
+    if (_remainingSeconds > 0) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (_remainingSeconds <= 1) {
+          timer.cancel();
+          setState(() => _remainingSeconds = 0);
+        } else {
+          setState(() => _remainingSeconds -= 1);
+        }
+      });
+    }
   }
 
   @override
@@ -841,74 +981,4 @@ class _PaymentSheetState extends State<_PaymentSheet> {
       ),
     );
   }
-}
-
-/// QR dummy untuk keperluan pengujian tampilan pembayaran.
-class _DummyQrPainter extends CustomPainter {
-  const _DummyQrPainter();
-
-  static const int _modules = 25;
-  static const int _seed = 17;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double cell = size.width / _modules;
-    final Paint dark = Paint()..color = textNeutralPrimary;
-
-    for (int row = 0; row < _modules; row++) {
-      for (int col = 0; col < _modules; col++) {
-        if (_insideFinder(row, col)) continue;
-        final int hash =
-            (row * 73856093) ^ (col * 19349663) ^ (_seed * 83492791);
-        if ((hash & 1) == 0) {
-          canvas.drawRect(
-            Rect.fromLTWH(col * cell, row * cell, cell, cell),
-            dark,
-          );
-        }
-      }
-    }
-
-    _drawFinder(canvas, dark, cell, 0, 0);
-    _drawFinder(canvas, dark, cell, 0, _modules - 7);
-    _drawFinder(canvas, dark, cell, _modules - 7, 0);
-  }
-
-  bool _insideFinder(int row, int col) {
-    bool inBox(int startRow, int startCol) =>
-        row >= startRow &&
-        row < startRow + 7 &&
-        col >= startCol &&
-        col < startCol + 7;
-
-    return inBox(0, 0) || inBox(0, _modules - 7) || inBox(_modules - 7, 0);
-  }
-
-  void _drawFinder(Canvas canvas, Paint dark, double cell, int row, int col) {
-    final Rect outer = Rect.fromLTWH(
-      col * cell,
-      row * cell,
-      cell * 7,
-      cell * 7,
-    );
-    final Rect middle = Rect.fromLTWH(
-      (col + 1) * cell,
-      (row + 1) * cell,
-      cell * 5,
-      cell * 5,
-    );
-    final Rect inner = Rect.fromLTWH(
-      (col + 2) * cell,
-      (row + 2) * cell,
-      cell * 3,
-      cell * 3,
-    );
-
-    canvas.drawRect(outer, dark);
-    canvas.drawRect(middle, Paint()..color = Colors.white);
-    canvas.drawRect(inner, dark);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

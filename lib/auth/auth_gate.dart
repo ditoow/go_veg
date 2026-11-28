@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -107,6 +108,20 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
     await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted) return;
+
+    // Fallback khusus Web/preview jika Firebase Web belum dikonfigurasi
+    // (sebelum Auth dipindahkan ke Supabase oleh tim).
+    if (Firebase.apps.isEmpty) {
+      final userPref = serviceLocator.get<UserPreference>();
+      if (userPref.getUserId() == null) {
+        await userPref.setUserId('web-demo-user');
+        await userPref.setUserName('Pengguna GoVeg');
+        await userPref.setUserEmail('demo@goveg.local');
+      }
+      if (!mounted) return;
+      _navigateToHome();
+      return;
+    }
 
     final user = FirebaseAuth.instance.currentUser;
 
