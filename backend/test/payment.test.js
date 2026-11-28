@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import vercelHandler from '../api/index.js';
 import { createApp } from '../src/server.js';
 import {
   computeMidtransSignature,
@@ -312,4 +313,68 @@ test('MidtransService sends 10-minute expiry and page_expiry to Snap API', async
   assert.match(sentBody.expiry.start_time, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+0700$/);
   assert.equal(sentBody.page_expiry.unit, 'minutes');
   assert.equal(sentBody.page_expiry.duration, 10);
+});
+
+test('Vercel entrypoint and pre-parsed req.body handling work cleanly', async () => {
+  const ctx = await startTestApp();
+  try {
+    // Simulate Vercel's pre-parsed req.body (stream already empty)
+    const req = Readable.from([]);
+    req.method = 'POST';
+    req.url = '/api/dev/orders';
+    req.headers = { host: 'example.vercel.app', 'content-type': 'application/json' };
+    req.body = { order_id: 'ORD-VERCEL-1', user_id: 'u-v1', gross_amount: 15000 };
+
+    let status = 0;
+    let rawBody = '';
+    await new Promise((resolve, reject) => {
+      const res = {
+        writeHead(code) {
+          status = code;
+        },
+        end(chunk = '') {
+          rawBody += chunk ? String(chunk) : '';
+          resolve();
+        },
+      };
+      Promise.resolve(ctx.baseUrl(req, res)).catch(reject);
+    });
+    assert.equal(status, 201);
+    assert.equal(JSON.parse(rawBody).data.id, 'ORD-VERCEL-1');
+  } finally {
+    await ctx.close();
+  }
+
+  // Exercise the exported Vercel handler directly on GET /api/health
+  const prevStorage = process.env.STORAGE_MODE;
+  const prevMidtrans = process.env.MIDTRANS_MODE;
+  process.env.STORAGE_MODE = 'local';
+  process.env.MIDTRANS_MODE = 'mock';
+  try {
+    const req = Readable.from([]);
+    req.method = 'GET';
+    req.url = '/api/health';
+    req.headers = { host: 'example.vercel.app' };
+    let status = 0;
+    let rawBody = '';
+    await new Promise((resolve, reject) => {
+      const res = {
+        writeHead(code) {
+          status = code;
+        },
+        end(chunk = '') {
+          rawBody += chunk ? String(chunk) : '';
+          resolve();
+        },
+      };
+      Promise.resolve(vercelHandler(req, res)).catch(reject);
+    });
+    assert.equal(status, 200);
+    assert.equal(JSON.parse(rawBody).success, true);
+  } finally {
+    if (prevStorage === undefined) delete process.env.STORAGE_MODE;
+    else process.env.STORAGE_MODE = prevStorage;
+    if (prevMidtrans === undefined) delete process.env.MIDTRANS_MODE;
+    else process.env.MIDTRANS_MODE = prevMidtrans;
+  }
 });

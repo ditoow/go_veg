@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,7 +59,11 @@ export function loadConfig(overrides = {}) {
       : 'https://api.sandbox.midtrans.com/v2',
     supabaseUrl: (overrides.supabaseUrl ?? process.env.SUPABASE_URL ?? '').replace(/\/+$/, ''),
     supabaseServiceRoleKey: overrides.supabaseServiceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-    localDbPath: overrides.localDbPath ?? path.join(BACKEND_ROOT, 'data', 'db.json'),
+    localDbPath:
+      overrides.localDbPath ??
+      (process.env.VERCEL
+        ? path.join(os.tmpdir(), 'go_veg_db.json')
+        : path.join(BACKEND_ROOT, 'data', 'db.json')),
   };
 
   if (config.storageMode === 'supabase') {

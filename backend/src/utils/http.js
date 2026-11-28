@@ -28,7 +28,26 @@ export function fail(res, message, statusCode = 400, data = null) {
   });
 }
 
+function parseJsonText(rawText) {
+  const trimmed = rawText.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const err = new Error('Invalid JSON payload');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
 export async function readJsonBody(req, maxBytes = 1024 * 1024) {
+  // Vercel's Node.js runtime may pre-parse req.body and consume the request stream.
+  if (req.body !== undefined) {
+    if (typeof req.body === 'string') return parseJsonText(req.body);
+    if (Buffer.isBuffer(req.body)) return parseJsonText(req.body.toString('utf8'));
+    if (typeof req.body === 'object' && req.body !== null) return req.body;
+  }
+
   const chunks = [];
   let size = 0;
 
@@ -42,14 +61,5 @@ export async function readJsonBody(req, maxBytes = 1024 * 1024) {
     chunks.push(chunk);
   }
 
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
-  if (!raw) return {};
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const err = new Error('Invalid JSON payload');
-    err.statusCode = 400;
-    throw err;
-  }
+  return parseJsonText(Buffer.concat(chunks).toString('utf8'));
 }
